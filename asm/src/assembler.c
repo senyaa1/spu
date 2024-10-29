@@ -301,6 +301,10 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	size_t operands_len_sum = 0;
 	for(int i = 0; i < operand_cnt; i++)
 	{
+		buf[ip] = ((operands[i].type << 4) | (operands[i].length));
+		ip += sizeof(uint8_t);
+		operands_len_sum++;
+
 		memcpy(buf + ip, &operands[i].value, operands[i].length);
 		operands_len_sum += operands[i].length;
 
