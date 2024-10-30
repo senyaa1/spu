@@ -54,7 +54,7 @@ int main(int argc, char** argv)
 		goto end;
 	}
 
-	// print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
+	print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
 
 	int out_sz = write_file(output_filename, asm_info.asm_buf, asm_info.asm_buf_sz);
 
@@ -63,7 +63,6 @@ int main(int argc, char** argv)
 		print_error("unable to write final binary!");
 		goto end;
 	}
-
 
 end:
 	free(asm_info.src_buf);

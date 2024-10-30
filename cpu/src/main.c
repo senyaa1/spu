@@ -46,7 +46,6 @@ int initialize_framebuffer(framebuf_t* fb)
 
 	if (fbfd == -1) 
 		return -1;
-
 	struct fb_var_screeninfo vinfo;
 	ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
 
@@ -79,15 +78,19 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 	{
 		uint8_t opcode = cpu->mem[cpu->regs[IP]];
 		instruction_t inst = opcode & 0b00011111;
-		cpu->regs[IP] += sizeof(instruction_t);
 
 		operand_t operands[MAX_OPERAND_CNT] = { 0 };
 		uint8_t operand_cnt = opcode >> 5;
+
+		cpu->regs[IP] += sizeof(instruction_t);
+		printf("current insturction: %x\n", inst);
+		printf("operand cnt: %d\n", operand_cnt);
+			printf("ip: %d\n", cpu->regs[IP]);
 		
 		for(int i = 0; i < operand_cnt; i++)
 		{
-			operands[i].type = cpu->regs[IP] >> 4;
-			operands[i].length = cpu->regs[IP] & 0b1111;
+			operands[i].type = cpu->mem[cpu->regs[IP]] >> 4;
+			operands[i].length = cpu->mem[cpu->regs[IP]] & 0b1111;
 			cpu->regs[IP]++;
 
 			switch(operands[i].type)
@@ -108,8 +111,12 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					break;
 			}
 			
+			printf("operand %d length: %d\n", i, operands[i].length);
+
 			cpu->regs[IP] += operands[i].length;
+
 		}
+		// printf("ip: %d\n", cpu->regs[IP]);
 		
 		
 		reg_t a = 0, b = 0, res = 0;
@@ -186,11 +193,8 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			case DRAW:
 				if(fb->addr == 0)
 				{
-					if(initialize_framebuffer(fb) < 0)
-					{
-						fprintf(stderr, "can't initialize fb!\n");
-						return -1;
-					}
+					fprintf(stderr, "framebuffer is not initialized!\n");
+					return -1;
 				}
 
 				// memcpy
@@ -198,13 +202,12 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				// copy to framebuffer
 				break;
 			case HLT:
-				destroy_framebuffer(fb);
+				printf("halting!\n");
 				return 0;
 		}
 	}
 
 	#undef BINARY_OP
-	destroy_framebuffer(fb);
 	return 0;
 }
 
@@ -216,6 +219,8 @@ void print_buf(uint8_t* buf, size_t sz)
 		printf("%02hhX ", buf[i]);
 	printf("\n");
 }
+
+const int RAM_OVERALLOCATION = 100000;
 
 int main(int argc, char** argv)
 {
@@ -233,26 +238,28 @@ int main(int argc, char** argv)
 	if(sz < 0)
 	{
 		fprintf(stderr,"unable to read the binary!\n");
-		free(cpu.mem);
 		return -1;
 	}
+
+	cpu.mem = realloc(cpu.mem, sz + RAM_OVERALLOCATION);
 	
 	print_buf(cpu.mem, sz);
 
 	framebuf_t fb = { 0 };
 	initialize_framebuffer(&fb);
 
-	int retcode = 0;
-	// int retcode = execute(&cpu, &fb);
+	int retcode = execute(&cpu, &fb);
 
 	if(retcode != 0)
 	{
 		fprintf(stderr,"error during execution!\n");
-		free(cpu.mem);
 		return retcode;
 	}
 
+	destroy_framebuffer(&fb);
 	free(cpu.mem);
+	stack_dtor(&cpu.call_stack);
+	stack_dtor(&cpu.data_stack);
 
 	return 0;
 }

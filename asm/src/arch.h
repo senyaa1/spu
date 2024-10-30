@@ -38,21 +38,6 @@
 
 
 // ASM FEATURES
-	db (hex/string)
-	dw (hex)
-
-	markers and jumps to those markers
-
-//	MISC	2
-	SLEEP
-	HLT
-
-
-//	MEM	3
-	push (val/register/)
-	pop register
-	mov
-
 //	CONTROL FLOW	
 //	call
 //	ret
@@ -78,25 +63,22 @@
 
 
 	- MATH	6
-	add
-	sub
-	mul
-	div
-
 	sin
 	cos
 		using taylor polynomials
-
-	xor
-	and
-	or
-	xchg
-	
-
 */
 
+typedef enum EXPRESSIONS : uint8_t
+{
+	DB		= 1,
+	DW		= 2,
+	DD		= 3,
+	DQ		= 4,
+	UNDEFINED	= 0
+} expression_t;
+
 typedef uint32_t reg_t;
-#define MAX_OPERAND_CNT 2
+#define MAX_OPERAND_CNT 10
 
 typedef enum INSTRUCTIONS : uint8_t
 {
@@ -129,6 +111,7 @@ typedef enum INSTRUCTIONS : uint8_t
 	XOR	= 27,
 	XCHG	= 28,
 	CMP	= 29,
+	INT	= 30,
 
 	INST_INVALID	= 0
 } instruction_t;
@@ -150,11 +133,12 @@ typedef enum REGISTERS : uint8_t
 
 typedef enum OPERANDS : uint8_t 
 {
-	OP_VALUE	= 1,
-	OP_PTR		= 2,
-	OP_REG		= 3,
-	OP_LABEL	= 4,
-	OP_INVALID	= 0,
+	OP_VALUE		= 1,
+	OP_PTR			= 2,
+	OP_REG			= 3,
+	OP_LABEL		= 4,
+	OP_STR			= 5,
+	OP_INVALID		= 0,
 } operand_type_t;
 
 typedef struct operand

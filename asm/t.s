@@ -1,1 +1,4 @@
-push 0x1
+entrypoint:
+	mov 1, ax
+	hlt
+

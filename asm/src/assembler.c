@@ -87,6 +87,16 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 			
 		return op;
 	}
+
+	if (operand_ptr[0] == '"' && operand_ptr[operand_len - 1] == '"')
+	{
+		op.length = operand_len - 2;
+		op.type = OP_STR;
+		op.operand_text = operand_ptr + 1;
+		op.operand_text_len = operand_len - 2;
+
+		return op;
+	}
 	
 	#define REGCMP(reg_name)						\
 		if(strncasecmp(operand_ptr, #reg_name, operand_len) == 0)	\
@@ -101,7 +111,6 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 	REGCMP(EX)
 	REGCMP(IP)
 	REGCMP(SP)
-	REGCMP(BP)
 	REGCMP(FLAGS)
 	REGCMP(IDTR)
 	REGCMP(GDTR)
@@ -140,6 +149,7 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 	op.operand_text_len = operand_len;
 	
 	return op;
+	#undef REGCMP
 	#undef REGCMP
 }
 
@@ -185,6 +195,21 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 		}
 	}
 
+	expression_t expr = UNDEFINED;
+
+	#define EXPRCMP(expr_name)						\
+		if(strncasecmp(t_line, #expr_name, instruction_word_len) == 0)	\
+		{								\
+			expr = expr_name;					\
+		}								\
+
+	EXPRCMP(DB)
+	EXPRCMP(DD)
+	EXPRCMP(DW)
+	EXPRCMP(DQ)
+
+	#undef EXPRCMP
+
 	// printf("instruction: %.*s\n", instruction_word_len, t_line);
 
 	instruction_t inst = INST_INVALID;
@@ -221,33 +246,28 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(OR)
 	INSTCMP(XOR)
 	INSTCMP(XCHG)
+	INSTCMP(INT)
 
 	#undef INSTCMP
 
-	if (!inst)
+	if (!inst && !expr)
 	{
 		print_error("encountered invalid instruction!");
 		print_line(line, line_len, line_num);
 		return -1;
 	}
 
-	buf[ip] = inst;
-	ip += sizeof(instruction_t);
 
 	// no operands
-	if(instruction_word_len == t_len)
-	{
-		return sizeof(instruction_t);
-	}
 
 	// operands
-	// printf("operands: %.*s\n", t_len - instruction_word_len, t_line + instruction_word_len);
+	printf("operands: %.*s\n", t_len - instruction_word_len, t_line + instruction_word_len);
 
 	operand_t operands[MAX_OPERAND_CNT] = { 0 };
 
 	size_t cur_operand_len = 0;
 	size_t operand_cnt = 0;
-	for(int i = instruction_word_len; i <= t_len; i++)
+	for(int i = instruction_word_len; i < t_len; i++)
 	{
 		if(t_line[i] != ',' && i != t_len)
 		{
@@ -257,7 +277,6 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 		operand_t op = parse_operand(t_line + i - cur_operand_len, cur_operand_len);
 		operands[operand_cnt++] = op;
-
 
 		if(!op.type)
 		{
@@ -274,34 +293,79 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			return -1;
 		}
 	}
-/*
-	#0
-	NONE			0
 
-	#1
-	reg			1
-	value			2
-	mem			3
-
-	#2
-	register <- mem		4
-	register <- value	5
-	register <- register	6
-	mem <- register		7
-*/
+	if(inst)
+	{
+		buf[ip] = inst | (operand_cnt << 5);
+		// printf("operand_cnt: %d\n", operand_cnt);
+		ip += sizeof(instruction_t);
+		if(instruction_word_len == t_len)
+			return sizeof(instruction_t);
+	}
 
 	// check if specified operand and instruction combination is allowed
 	// make a list of expected operands
 
 
-	// for (int i = 0; i < operand_cnt; i++)
-	// 	printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
+	for (int i = 0; i < operand_cnt; i++)
+		printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 
+	if(expr)
+	{
+		reg_t saved_ip = ip;
+		for(int i = 0; i < operand_cnt; i++)
+		{
+			if(operands[i].type == OP_STR && expr != DB)
+			{
+				print_error("unable to define non-single byte str!");
+				print_line(line, line_len, line_num);
+				return -1;
+			}
+
+			if(operands[i].type != OP_VALUE && operands[i].type != OP_STR)
+			{
+				print_error("invalid operand!");
+				print_line(line, line_len, line_num);
+				return -1;
+			}
+
+			switch(expr)
+			{
+				case DB:
+					if(operands[i].type == OP_STR)
+					{
+						for(int j = 0; j < operands[i].operand_text_len; j++)
+							buf[ip++] = operands[i].operand_text[j];
+						
+					}
+					else
+					{
+						memcpy(buf + ip, &operands[i].value, sizeof(uint8_t));
+						ip += sizeof(uint8_t);
+					}
+					break;
+				case DW:
+					memcpy(buf + ip, &operands[i].value, sizeof(uint16_t));
+					ip += sizeof(uint16_t);
+					break;
+				case DD:
+					memcpy(buf + ip, &operands[i].value, sizeof(uint32_t));
+					ip += sizeof(uint32_t);
+					break;
+				case DQ:
+					memcpy(buf + ip, &operands[i].value, sizeof(uint64_t));
+					ip += sizeof(uint64_t);
+					break;
+			}
+		}
+
+		return ip - saved_ip;
+	}
 
 	size_t operands_len_sum = 0;
 	for(int i = 0; i < operand_cnt; i++)
 	{
-		buf[ip] = ((operands[i].type << 4) | (operands[i].length));
+		buf[ip] = (((operands[i].type == OP_LABEL ? OP_VALUE : operands[i].type) << 4) | (operands[i].length));
 		ip += sizeof(uint8_t);
 		operands_len_sum++;
 
@@ -329,7 +393,6 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	}
 
 	return sizeof(instruction_t) + operands_len_sum;
-
 }
 
 
