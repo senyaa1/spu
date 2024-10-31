@@ -112,6 +112,8 @@ typedef enum INSTRUCTIONS : uint8_t
 	XCHG	= 28,
 	CMP	= 29,
 	INT	= 30,
+	PRINT	= 31,
+	LIDT	= 32,
 
 	INST_INVALID	= 0
 } instruction_t;

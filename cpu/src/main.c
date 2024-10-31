@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -10,6 +11,7 @@
 #include "arch.h"
 #include "fs.h"
 #include "stack.h"
+#include "io.h"
 
 /*
 	read binary
@@ -21,6 +23,15 @@
 
 
 	*/
+
+void print_buf(uint8_t* buf, size_t sz)
+{
+	printf("\n");
+	for(int i = 0; i < sz; i++)
+		printf("%02hhX ", buf[i]);
+	printf("\n");
+}
+
 
 typedef struct cpu
 {
@@ -85,7 +96,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 		cpu->regs[IP] += sizeof(instruction_t);
 		printf("current insturction: %x\n", inst);
 		printf("operand cnt: %d\n", operand_cnt);
-			printf("ip: %d\n", cpu->regs[IP]);
+		printf("ip: %d\n", cpu->regs[IP]);
 		
 		for(int i = 0; i < operand_cnt; i++)
 		{
@@ -93,23 +104,27 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			operands[i].length = cpu->mem[cpu->regs[IP]] & 0b1111;
 			cpu->regs[IP]++;
 
+
+			reg_t data = 0;
 			switch(operands[i].type)
 			{
 				case OP_VALUE:
 					operands[i].value = ((reg_t*)cpu->mem)[cpu->regs[IP]];
-					operands[i].actual_value = operands[i].value;
+					// operands[i].actual_value = operands[i].value;
 					break;
 				case OP_REG:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
-					operands[i].actual_value = cpu->regs[operands[i].value];
 					break;
 				case OP_PTR:
-					operands[i].value = ((reg_t*)cpu->mem)[cpu->regs[IP]];
-					operands[i].actual_value = cpu->mem[operands[i].value];
+					memcpy(&data, cpu->mem + cpu->regs[IP], sizeof(reg_t));
+					operands[i].value = data;
+					// operands[i].actual_value = cpu->regs[operands[i].value];
 					break;
 				default:
 					break;
 			}
+			
+			printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 			
 			printf("operand %d length: %d\n", i, operands[i].length);
 
@@ -202,23 +217,53 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				// copy to framebuffer
 				break;
 			case HLT:
-				printf("halting!\n");
+				printf(GREEN "halting!\n" RESET);
 				return 0;
+			case JMP:
+				cpu->regs[IP] = operands[0].value;
+				break;
+			case OUT:
+				switch(operand_cnt)
+				{
+					case 0:
+						stack_pop(&cpu->data_stack, &a);
+						printf(GREEN "%d\n" RESET, a);
+						break;
+					case 1:
+						printf(GREEN "%d\n" RESET, operands[0].actual_value);
+						break;
+				}
+				break;
+			case PRINT:
+				switch(operand_cnt)
+				{
+					case 0:
+						stack_pop(&cpu->data_stack, &a);
+						printf(GREEN "%s\n" RESET, cpu->mem[a]);
+						break;
+					case 1:
+						// printf("printing string at %d\n", operands[0].value);
+						printf(GREEN "%s\n" RESET, cpu->mem + operands[0].value);
+						break;
+				}
+				break;
+			case LIDT:
+				cpu->regs[IDTR] = operands[0].value;
+				break;
+			default:
+				fprintf(stderr, RED "Encountered INVALID instruction!\n" RESET);
+				return -1;
 		}
+		
+		// stack_print(&cpu->data_stack, "amogus", 1, "sus()");
+
+
 	}
 
 	#undef BINARY_OP
 	return 0;
 }
 
-
-void print_buf(uint8_t* buf, size_t sz)
-{
-	printf("\n");
-	for(int i = 0; i < sz; i++)
-		printf("%02hhX ", buf[i]);
-	printf("\n");
-}
 
 const int RAM_OVERALLOCATION = 100000;
 
@@ -250,16 +295,10 @@ int main(int argc, char** argv)
 
 	int retcode = execute(&cpu, &fb);
 
-	if(retcode != 0)
-	{
-		fprintf(stderr,"error during execution!\n");
-		return retcode;
-	}
-
 	destroy_framebuffer(&fb);
 	free(cpu.mem);
 	stack_dtor(&cpu.call_stack);
 	stack_dtor(&cpu.data_stack);
 
-	return 0;
+	return retcode;
 }

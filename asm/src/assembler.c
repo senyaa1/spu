@@ -62,6 +62,40 @@ static int read_value(char* valuestr, size_t n, uint64_t* val)
 	return 1;
 }
 
+static void add_to_fixups(asm_info_t* asm_info, operand_t* op, reg_t* location)
+{
+	if(asm_info->fixups_sz == 0)	
+	{
+		asm_info->fixups_sz = 10 * sizeof(fixup_t);
+		asm_info->fixups = (fixup_t*)calloc(asm_info->fixups_sz, sizeof(fixup_t));
+	}
+
+	if(asm_info->fixups_sz < (asm_info->fixup_cnt + 1) * sizeof(fixup_t))
+	{
+		asm_info->fixups_sz *= 2;
+		asm_info->fixups = realloc(asm_info->fixups, asm_info->fixups_sz);
+	}
+
+	asm_info->fixups[asm_info->fixup_cnt++] = (fixup_t){op->operand_text, op->operand_text_len, location};
+}
+
+static void add_to_labels(asm_info_t* asm_info, char* name, size_t name_len, reg_t location)
+{
+	if(asm_info->labels_sz == 0)	
+	{
+		asm_info->labels_sz = 10 * sizeof(label_t);
+		asm_info->labels = (label_t*)calloc(asm_info->labels_sz, sizeof(label_t));
+	}
+
+	if(asm_info->labels_sz < (asm_info->label_cnt + 1) * sizeof(label_t))
+	{
+		asm_info->labels_sz *= 2;
+		asm_info->labels = realloc(asm_info->labels, asm_info->labels_sz);
+	}
+
+	asm_info->labels[asm_info->label_cnt++] = (label_t){name, name_len, location};
+}
+
 
 static operand_t parse_operand(char* operand_ptr, size_t len)
 {
@@ -134,7 +168,7 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 
 	for(int i = 0; i < operand_len; i++)		// no spaces in labels
 	{
-		if(ispunct(operand_ptr[i]) || isspace(operand_ptr[i]))
+		if((ispunct(operand_ptr[i]) && operand_ptr[i] != '_') || isspace(operand_ptr[i]))
 		{
 			op.type = OP_INVALID;
 			return op;
@@ -150,8 +184,8 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 	
 	return op;
 	#undef REGCMP
-	#undef REGCMP
 }
+
 
 static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf, reg_t ip, size_t line_num, asm_info_t* asm_info)
 {
@@ -164,21 +198,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	if(t_line[t_len - 1] == ':')	// label
 	{
 		// printf("encountered label named %.*s at 0x%x\n", t_len - 1, t_line, ip);
-
-		if(asm_info->labels_sz == 0)	
-		{
-			asm_info->labels_sz = 10 * sizeof(label_t);
-			asm_info->labels = (label_t*)calloc(asm_info->labels_sz, sizeof(label_t));
-		}
-
-		if(asm_info->labels_sz < (asm_info->label_cnt + 1) * sizeof(label_t))
-		{
-			asm_info->labels_sz *= 2;
-			asm_info->labels = realloc(asm_info->labels, asm_info->labels_sz);
-		}
-
-		asm_info->labels[asm_info->label_cnt++] = (label_t){t_line, t_len - 1, ip};
-		
+		add_to_labels(asm_info, t_line, t_len - 1, ip);
 		return 0;
 	}
 
@@ -247,6 +267,8 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(XOR)
 	INSTCMP(XCHG)
 	INSTCMP(INT)
+	INSTCMP(PRINT)
+	INSTCMP(LIDT)
 
 	#undef INSTCMP
 
@@ -265,9 +287,10 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 	operand_t operands[MAX_OPERAND_CNT] = { 0 };
 
+
 	size_t cur_operand_len = 0;
 	size_t operand_cnt = 0;
-	for(int i = instruction_word_len; i < t_len; i++)
+	for(int i = instruction_word_len; i <= t_len; i++)
 	{
 		if(t_line[i] != ',' && i != t_len)
 		{
@@ -278,6 +301,8 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 		operand_t op = parse_operand(t_line + i - cur_operand_len, cur_operand_len);
 		operands[operand_cnt++] = op;
 
+		cur_operand_len = 0;
+
 		if(!op.type)
 		{
 			print_error("can't parse operand!");
@@ -285,19 +310,20 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			return -1;
 		}
 
-		cur_operand_len = 0;
 		if(operand_cnt > MAX_OPERAND_CNT) 
 		{
 			print_error("too many operands!");
 			print_line(line, line_len, line_num);
 			return -1;
 		}
+
+		// printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", op.type, op.length, op.value);
 	}
 
 	if(inst)
 	{
 		buf[ip] = inst | (operand_cnt << 5);
-		// printf("operand_cnt: %d\n", operand_cnt);
+		printf("operand_cnt: %d\n", operand_cnt);
 		ip += sizeof(instruction_t);
 		if(instruction_word_len == t_len)
 			return sizeof(instruction_t);
@@ -322,12 +348,13 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 				return -1;
 			}
 
-			if(operands[i].type != OP_VALUE && operands[i].type != OP_STR)
+			if(operands[i].type == OP_LABEL && expr != DD)
 			{
-				print_error("invalid operand!");
+				print_error("can't use label with incorrect size!");
 				print_line(line, line_len, line_num);
-				return -1;
 			}
+
+			if(operands[i].type == OP_LABEL) add_to_fixups(asm_info, &operands[i], (reg_t*)(buf + ip));
 
 			switch(expr)
 			{
@@ -365,7 +392,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	size_t operands_len_sum = 0;
 	for(int i = 0; i < operand_cnt; i++)
 	{
-		buf[ip] = (((operands[i].type == OP_LABEL ? OP_VALUE : operands[i].type) << 4) | (operands[i].length));
+		buf[ip] = (((operands[i].type == OP_LABEL ? OP_PTR : operands[i].type) << 4) | (operands[i].length));
 		ip += sizeof(uint8_t);
 		operands_len_sum++;
 
@@ -374,19 +401,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 		if(operands[i].type == OP_LABEL)
 		{
-			if(asm_info->fixups_sz == 0)	
-			{
-				asm_info->fixups_sz = 10 * sizeof(fixup_t);
-				asm_info->fixups = (fixup_t*)calloc(asm_info->fixups_sz, sizeof(fixup_t));
-			}
-
-			if(asm_info->fixups_sz < (asm_info->fixup_cnt + 1) * sizeof(fixup_t))
-			{
-				asm_info->fixups_sz *= 2;
-				asm_info->fixups = realloc(asm_info->fixups, asm_info->fixups_sz);
-			}
-
-			asm_info->fixups[asm_info->fixup_cnt++] = (fixup_t){operands[i].operand_text, operands[i].operand_text_len, (reg_t*)(buf + ip)};
+			add_to_fixups(asm_info, &operands[i], (reg_t*)(buf + ip));
 		}
 
 		ip += operands[i].length;
@@ -394,6 +409,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 	return sizeof(instruction_t) + operands_len_sum;
 }
+
 
 
 int assemble(asm_info_t* asm_info)
@@ -473,7 +489,7 @@ int fixup(asm_info_t* asm_info)
 				continue;
 			#undef min
 
-			*(asm_info->fixups[i].location) = asm_info->labels[j].value;
+			memcpy(asm_info->fixups[i].location, &asm_info->labels[j].value, sizeof(reg_t));
 			found = true;
 			break;
 		}
