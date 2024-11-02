@@ -32,6 +32,11 @@ void print_buf(uint8_t* buf, size_t sz)
 	printf("\n");
 }
 
+typedef struct idt
+{
+	uint8_t iv_cnt;
+	reg_t* interrupt_vectors;
+} idt_t;
 
 typedef struct cpu
 {
@@ -39,6 +44,8 @@ typedef struct cpu
 	stack_t data_stack;
 	stack_t call_stack;
 	uint8_t* mem;
+
+	idt_t idt;
 } cpu_t;
 
 typedef struct framebuf 
@@ -83,15 +90,28 @@ void destroy_framebuffer(framebuf_t* fb)
 	close(fb->fd);
 }
 
+int load_idt(cpu_t* cpu)
+{
+	cpu->idt.iv_cnt = cpu->mem[cpu->regs[IDTR]];
+	free(cpu->idt.interrupt_vectors);
+
+	cpu->idt.interrupt_vectors = calloc(cpu->idt.iv_cnt, sizeof(reg_t));
+
+	for(int i = 0; i < cpu->idt.iv_cnt; i++)
+		memcpy(&cpu->idt.interrupt_vectors[i], &cpu->mem[cpu->regs[IDTR] + 1 + i * sizeof(reg_t)], sizeof(reg_t));
+
+	return 0;
+}
+
 int execute(cpu_t* cpu, framebuf_t* fb)
 {
 	while(1)
 	{
 		uint8_t opcode = cpu->mem[cpu->regs[IP]];
-		instruction_t inst = opcode & 0b00011111;
+		instruction_t inst = opcode & 0b00111111;
 
 		operand_t operands[MAX_OPERAND_CNT] = { 0 };
-		uint8_t operand_cnt = opcode >> 5;
+		uint8_t operand_cnt = opcode >> 6;
 
 		cpu->regs[IP] += sizeof(instruction_t);
 		printf("current insturction: %x\n", inst);
@@ -109,16 +129,17 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			switch(operands[i].type)
 			{
 				case OP_VALUE:
-					operands[i].value = ((reg_t*)cpu->mem)[cpu->regs[IP]];
-					// operands[i].actual_value = operands[i].value;
+					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
+					operands[i].actual_value = operands[i].value;
 					break;
 				case OP_REG:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
+					operands[i].actual_value = cpu->regs[operands[i].value];
 					break;
 				case OP_PTR:
 					memcpy(&data, cpu->mem + cpu->regs[IP], sizeof(reg_t));
 					operands[i].value = data;
-					// operands[i].actual_value = cpu->regs[operands[i].value];
+					operands[i].actual_value = cpu->mem[operands[i].value];
 					break;
 				default:
 					break;
@@ -149,27 +170,27 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 		switch(inst)
 		{
 			case PUSH:
-				stack_push(&cpu->data_stack, &operands[0].actual_value);
+				stack_push(&cpu->data_stack, &operands[0].value);
 				break;
 			case POP:
 				stack_pop(&cpu->data_stack, &cpu->regs[operands[0].value]);
 				break;
 			case MOV:
-				// if(operand_cnt != 2)
-				// {
-				// 	fprintf(stderr, "mov should have 2 operands!\n");
-				// 	return -1;
-				// }
+				if(operand_cnt != 2)
+				{
+					fprintf(stderr, "mov should have 2 operands!\n");
+					return -1;
+				}
 				switch(operands[0].type)
 				{
 					case OP_PTR:
-						cpu->mem[operands[1].value] = operands[0].actual_value;
+						cpu->mem[operands[0].value] = operands[1].actual_value;
 						break;
 					case OP_VALUE:
-						operands[1].value = operands[0].actual_value;
-						break;
+						fprintf(stderr, RED "can't move in to a fucking value!!\n" RESET);
+						return -1;
 					case OP_REG:
-						cpu->regs[operands[1].value] = operands[0].actual_value;
+						cpu->regs[operands[0].value] = operands[1].actual_value;
 						break;
 					default:
 						break;
@@ -185,12 +206,12 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				break;
 
 			BINARY_OP(ADD, res = a + b);
-			BINARY_OP(SUB, res = b - a);
+			BINARY_OP(SUB, res = b - a; cpu->regs[FLAGS] |= (res == 0));
 			BINARY_OP(MUL, res = a * b);
 			BINARY_OP(DIV, res = b / a);
 
 			BINARY_OP(AND, res = a & b);
-			BINARY_OP(OR, res = a | b);
+			BINARY_OP(OR, res = a | b; );
 			BINARY_OP(XOR, res = a ^ b);
 
 			case CALL:
@@ -204,6 +225,15 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				printf("processor dump!\n");
 				break;
 			case CMP:
+				stack_pop(&cpu->call_stack, &a);
+				stack_pop(&cpu->call_stack, &b);
+
+				if(a == b)	cpu->regs[FLAGS] |= 1;		// ZF (0)
+				else		cpu->regs[FLAGS] &= ~1;
+
+				if(a < b)	cpu->regs[FLAGS] |= (1 << 1);	// CF (1)
+				else		cpu->regs[FLAGS] &= ~(1 << 1);
+
 				break;
 			case DRAW:
 				if(fb->addr == 0)
@@ -219,9 +249,29 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			case HLT:
 				printf(GREEN "halting!\n" RESET);
 				return 0;
+
 			case JMP:
 				cpu->regs[IP] = operands[0].value;
 				break;
+			case JZ:
+				if(cpu->regs[FLAGS] & 1) cpu->regs[IP] = operands[0].value;
+				break;
+			case JNZ:
+				if(!(cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				break;
+			case JG:
+				if(!(cpu->regs[FLAGS] & (1 << 1))) cpu->regs[IP] = operands[0].value;
+				break;
+			case JGE:
+				if(!(cpu->regs[FLAGS] & (1 << 1)) || (cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				break;
+			case JL:
+				if(cpu->regs[FLAGS] & (1 << 1)) cpu->regs[IP] = operands[0].value;
+				break;
+			case JLE:
+				if(cpu->regs[FLAGS] & (1 << 1) || (cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				break;
+
 			case OUT:
 				switch(operand_cnt)
 				{
@@ -234,24 +284,53 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 						break;
 				}
 				break;
+			case INPUT:
+				printf(BLUE "input: ");
+				scanf("%d", &a);
+				printf(RESET);
+				stack_push(&cpu->data_stack, &a);
+				break;
 			case PRINT:
 				switch(operand_cnt)
 				{
 					case 0:
 						stack_pop(&cpu->data_stack, &a);
-						printf(GREEN "%s\n" RESET, cpu->mem[a]);
+						printf(GREEN "%d\n" RESET, a);
 						break;
 					case 1:
 						// printf("printing string at %d\n", operands[0].value);
-						printf(GREEN "%s\n" RESET, cpu->mem + operands[0].value);
+						printf(GREEN "%s\n" RESET, cpu->mem + operands[0].actual_value);
 						break;
 				}
 				break;
 			case LIDT:
 				cpu->regs[IDTR] = operands[0].value;
+				if(load_idt(cpu))
+				{
+					fprintf(stderr, RED "Unable to load IDT!\n" RESET);
+					return -1;
+				}
+				printf(BLUE "loaded interrupt descriptor table at %d: sz: %d\n" RESET, cpu->regs[IDTR], cpu->idt.iv_cnt);
+				break;
+			case LGDT:
+				cpu->regs[GDTR] = operands[0].value;
+				printf(BLUE "loaded global descriptor table at %x: first byte: %x\n" RESET, cpu->regs[GDTR], cpu->mem[cpu->regs[GDTR]]);
+				break;
+			case IRET:
+				stack_pop(&cpu->call_stack, &cpu->regs[IP]);
+				break;
+			case INT:
+				stack_push(&cpu->call_stack, &cpu->regs[IP]);
+				printf("INTERRUPTING!\n");
+				if(operands[0].actual_value - 1 > cpu->idt.iv_cnt)
+				{
+					fprintf(stderr, RED "Interrupt handler not found!\n" RESET);
+					return -1;
+				}
+				cpu->regs[IP] = cpu->idt.interrupt_vectors[operands[0].actual_value - 1];
 				break;
 			default:
-				fprintf(stderr, RED "Encountered INVALID instruction!\n" RESET);
+				fprintf(stderr, RED "Encountered INVALID instruction!: %d (%x) \n" RESET, inst, inst);
 				return -1;
 		}
 		
@@ -297,6 +376,7 @@ int main(int argc, char** argv)
 
 	destroy_framebuffer(&fb);
 	free(cpu.mem);
+	free(cpu.idt.interrupt_vectors);
 	stack_dtor(&cpu.call_stack);
 	stack_dtor(&cpu.data_stack);
 

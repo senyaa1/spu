@@ -108,7 +108,7 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 		.value = 0,
 	};
 
-	if (operand_ptr[0] == '[' && operand_ptr[operand_len - 1] == ']')
+	if (operand_ptr[0] == '[' && operand_ptr[operand_len - 1] == ']')	// recursively parse!
 	{
 		op.type = OP_PTR;
 		op.length = sizeof(reg_t);
@@ -132,11 +132,11 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 		return op;
 	}
 	
-	#define REGCMP(reg_name)						\
-		if(strncasecmp(operand_ptr, #reg_name, operand_len) == 0)	\
-		{								\
-			op.value = reg_name;					\
-		}								\
+	#define REGCMP(reg_name)										\
+		if(strlen(#reg_name) == operand_len && strncasecmp(operand_ptr, #reg_name, operand_len) == 0)	\
+		{												\
+			op.value = reg_name;									\
+		}												\
 
 	REGCMP(AX)
 	REGCMP(BX)
@@ -249,7 +249,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(DIV)
 	INSTCMP(DUMP)
 	INSTCMP(DRAW)
-	INSTCMP(IN)
+	INSTCMP(INPUT)
 	INSTCMP(OUT)
 	INSTCMP(HLT)
 	INSTCMP(SLEEP)
@@ -269,6 +269,8 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(INT)
 	INSTCMP(PRINT)
 	INSTCMP(LIDT)
+	INSTCMP(LGDT)
+	INSTCMP(IRET)
 
 	#undef INSTCMP
 
@@ -297,10 +299,12 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			cur_operand_len++;
 			continue;
 		}
+		printf("cur operand len: %d\n", cur_operand_len);
 
 		operand_t op = parse_operand(t_line + i - cur_operand_len, cur_operand_len);
 		operands[operand_cnt++] = op;
 
+		if(cur_operand_len == 0) operand_cnt = 0;
 		cur_operand_len = 0;
 
 		if(!op.type)
@@ -310,6 +314,11 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			return -1;
 		}
 
+		// printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", op.type, op.length, op.value);
+	}
+
+	if(inst)
+	{
 		if(operand_cnt > MAX_OPERAND_CNT) 
 		{
 			print_error("too many operands!");
@@ -317,12 +326,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			return -1;
 		}
 
-		// printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", op.type, op.length, op.value);
-	}
-
-	if(inst)
-	{
-		buf[ip] = inst | (operand_cnt << 5);
+		buf[ip] = inst | (operand_cnt << 6);
 		printf("operand_cnt: %d\n", operand_cnt);
 		ip += sizeof(instruction_t);
 		if(instruction_word_len == t_len)
@@ -392,7 +396,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	size_t operands_len_sum = 0;
 	for(int i = 0; i < operand_cnt; i++)
 	{
-		buf[ip] = (((operands[i].type == OP_LABEL ? OP_PTR : operands[i].type) << 4) | (operands[i].length));
+		buf[ip] = (((operands[i].type == OP_LABEL ? OP_VALUE : operands[i].type) << 4) | (operands[i].length));
 		ip += sizeof(uint8_t);
 		operands_len_sum++;
 
@@ -485,7 +489,8 @@ int fixup(asm_info_t* asm_info)
 		for(int j = 0; j < asm_info->label_cnt; j++)
 		{
 			#define min(a,b) ((a < b) ? a : b)
-			if(strncmp(asm_info->fixups[i].name, asm_info->labels[j].name, min(asm_info->labels[j].name_len, asm_info->fixups[i].name_len)) != 0)
+			size_t len1 = asm_info->labels[j].name_len, len2 = asm_info->fixups[i].name_len;
+			if(len1 != len2 || strncmp(asm_info->fixups[i].name, asm_info->labels[j].name, len1) != 0)
 				continue;
 			#undef min
 

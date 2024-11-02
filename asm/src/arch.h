@@ -9,7 +9,7 @@
 
 		opcode byte 1
 	/-----------------------\			
-	1 2 3		4 5 6 7 8	
+	1 2 		3 4 5 6 7 8	
 	operandcnt	instruction num	type    length	
 
 
@@ -78,7 +78,7 @@ typedef enum EXPRESSIONS : uint8_t
 } expression_t;
 
 typedef uint32_t reg_t;
-#define MAX_OPERAND_CNT 10
+#define MAX_OPERAND_CNT 4
 
 typedef enum INSTRUCTIONS : uint8_t
 {
@@ -93,7 +93,7 @@ typedef enum INSTRUCTIONS : uint8_t
 	// COS	= 9,
 	DUMP	= 10,
 	DRAW	= 11,
-	IN	= 12,
+	INPUT	= 12,
 	OUT	= 13,
 	HLT	= 14,
 	SLEEP	= 15,
@@ -114,6 +114,8 @@ typedef enum INSTRUCTIONS : uint8_t
 	INT	= 30,
 	PRINT	= 31,
 	LIDT	= 32,
+	LGDT	= 33,
+	IRET	= 34,
 
 	INST_INVALID	= 0
 } instruction_t;

@@ -10,6 +10,8 @@
 
 int main(int argc, char** argv)
 {
+	int retcode = 0;
+
 	asm_info_t asm_info = { 0 };
 
 	int opt = 0;
@@ -22,13 +24,15 @@ int main(int argc, char** argv)
 				break;
 			default:
 				print_error("unknown option!");
-				return 1;
+				retcode = -1;
+				goto end;
 		}
 	}
 
 	if(argc - optind == 0)
 	{
 		print_error("no source code provided!");
+		retcode = -1;
 		goto end;
 	}
 
@@ -36,6 +40,7 @@ int main(int argc, char** argv)
 	if(sz < 0)
 	{
 		print_error("unable to read the source code!");
+		retcode = -1;
 		goto end;
 	}
 
@@ -44,6 +49,7 @@ int main(int argc, char** argv)
 	int final_sz = assemble(&asm_info);
 	if(final_sz < 0)
 	{
+		retcode = -1;
 		goto end;
 	}
 
@@ -51,6 +57,7 @@ int main(int argc, char** argv)
 
 	if(fixup(&asm_info) < 0)
 	{
+		retcode = -1;
 		goto end;
 	}
 
@@ -61,6 +68,7 @@ int main(int argc, char** argv)
 	if(out_sz < 0)
 	{
 		print_error("unable to write final binary!");
+		retcode = -1;
 		goto end;
 	}
 
@@ -69,5 +77,5 @@ end:
 	free(asm_info.asm_buf);
 	free(asm_info.labels);
 	free(asm_info.fixups);
-	return 0;
+	return retcode;
 }
