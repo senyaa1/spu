@@ -41,9 +41,10 @@ typedef struct cpu
 typedef struct framebuf 
 {
 	int fd;
-	uint32_t* addr;
-	size_t actual_width;
-	size_t actual_height;
+	char* addr;
+	struct fb_var_screeninfo vinfo;
+	struct fb_fix_screeninfo finfo;
+
 } framebuf_t;
 
 #define FB_WIDTH 600
@@ -59,15 +60,12 @@ int initialize_framebuffer(framebuf_t* fb)
 
 	if (fbfd == -1) return -1;
 
-	struct fb_var_screeninfo vinfo;
-	ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
+	ioctl(fbfd, FBIOGET_VSCREENINFO, &fb->vinfo);
+	ioctl(fbfd, FBIOGET_FSCREENINFO, &fb->finfo);
 
-	fb->addr = mmap(NULL, FB_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
+	fb->addr = mmap(NULL, fb->vinfo.xres * fb->vinfo.yres * fb->vinfo.bits_per_pixel / 8, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
 
-	fb->actual_width = vinfo.xres;
-	fb->actual_height = vinfo.yres;
-
-	printf("width: %d\theight: %d\n", fb->actual_width, fb->actual_height);
+	printf("width: %d\theight: %d\n", fb->vinfo.xres, fb->vinfo.yres);
 
 	if(fb->addr == MAP_FAILED) return -1;
 
@@ -287,12 +285,30 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				
 				uint32_t* dataptr = (uint32_t*)(cpu->mem + operands[0].actual_value);
 
-				for(int row = 0; row < FB_HEIGHT; row++)
+				size_t y_offset = (fb->vinfo.yres - FB_HEIGHT) / 2;
+				size_t x_offset = (fb->vinfo.xres - FB_WIDTH) / 2;
+
+
+
+				for (size_t y = 0; y < FB_HEIGHT; y++)
 				{
-					for(int column = 0; column < FB_WIDTH; column++)
-					{	
-						fb->addr[row * fb->actual_width + column] = 0xAAFFAA00;
-						// fb->addr[row * fb->actual_width + column]= dataptr + (row * FB_WIDTH + column), sizeof(uint32_t));
+					for (size_t x = 0; x < FB_WIDTH; x++) 
+					{
+						size_t location = (x + fb->vinfo.xoffset + x_offset) * (fb->vinfo.bits_per_pixel/8) + (y + fb->vinfo.yoffset + y_offset) * fb->finfo.line_length;
+
+						if (fb->vinfo.bits_per_pixel == 32) {
+							*(fb->addr + location) = 100;			// Some blue
+							*(fb->addr + location + 1) = 15+(x-100)/2;	// A little green
+							*(fb->addr + location + 2) = 200-(y-100)/5;	// A lot of red
+							*(fb->addr + location + 3) = 0;			// No transparency
+						} else  { 
+							int b = 10;
+							int g = (x-100)/6;     
+							int r = 31-(y-100)/16;    
+							unsigned short int t = r<<11 | g << 5 | b;
+							*((unsigned short int*)(fb->addr + location)) = t;
+						}
+
 					}
 				}
 
