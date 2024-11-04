@@ -64,10 +64,12 @@ static int read_value(char* valuestr, size_t n, uint64_t* val)
 
 static void add_to_fixups(asm_info_t* asm_info, operand_t* op, reg_t* location)
 {
+	printf(RED "adding to fixups!\n" RESET);
 	if(asm_info->fixups_sz == 0)	
 	{
 		asm_info->fixups_sz = 10 * sizeof(fixup_t);
 		asm_info->fixups = (fixup_t*)calloc(asm_info->fixups_sz, sizeof(fixup_t));
+		printf(GREEN "inited fixups!\n" RESET);
 	}
 
 	if(asm_info->fixups_sz < (asm_info->fixup_cnt + 1) * sizeof(fixup_t))
@@ -81,6 +83,7 @@ static void add_to_fixups(asm_info_t* asm_info, operand_t* op, reg_t* location)
 
 static void add_to_labels(asm_info_t* asm_info, char* name, size_t name_len, reg_t location)
 {
+	printf(RED "adding to labels!\n" RESET);
 	if(asm_info->labels_sz == 0)	
 	{
 		asm_info->labels_sz = 10 * sizeof(label_t);
@@ -110,15 +113,16 @@ static operand_t parse_operand(char* operand_ptr, size_t len)
 
 	if (operand_ptr[0] == '[' && operand_ptr[operand_len - 1] == ']')	// recursively parse!
 	{
-		op.type = OP_PTR;
-		op.length = sizeof(reg_t);
-		if(!read_value(operand_ptr + 1, operand_len - 2, &op.value))
+		op = parse_operand(operand_ptr + 1, operand_len - 2);
+		if(!op.type)
 		{
 			print_error("can't parse operand value!");
 			op.type = OP_INVALID;
 			return op;
 		}
-			
+		printf("parsed [ptr] operand as type %d\n", op.type);
+		op.type |= OPERAND_PTR_BIT;
+
 		return op;
 	}
 
@@ -192,17 +196,17 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	// printf("line: \"%.*s\"\n", line_len, line);
 	char* t_line = (char*)line;
 	size_t t_len = strim(&t_line, line_len);
+	printf("trimmed line: \"%.*s\"\n", t_len, t_line);
 
 	if(t_len == 0) return 0;
 
 	if(t_line[t_len - 1] == ':')	// label
 	{
-		// printf("encountered label named %.*s at 0x%x\n", t_len - 1, t_line, ip);
+		printf("encountered label named %.*s at 0x%x\n", t_len - 1, t_line, ip);
 		add_to_labels(asm_info, t_line, t_len - 1, ip);
 		return 0;
 	}
 
-	// printf("trimmed line: \"%.*s\"\n", t_len, t_line);
 
 	size_t instruction_word_len = t_len;
 	// match first word (instruction)
@@ -288,7 +292,6 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	printf("operands: %.*s\n", t_len - instruction_word_len, t_line + instruction_word_len);
 
 	operand_t operands[MAX_OPERAND_CNT] = { 0 };
-
 
 	size_t cur_operand_len = 0;
 	size_t operand_cnt = 0;
@@ -396,14 +399,23 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	size_t operands_len_sum = 0;
 	for(int i = 0; i < operand_cnt; i++)
 	{
-		buf[ip] = (((operands[i].type == OP_LABEL ? OP_VALUE : operands[i].type) << 4) | (operands[i].length));
+		buf[ip] = ((((operands[i].type & ~OPERAND_PTR_BIT) ==	OP_LABEL ? 
+									OP_VALUE :
+									operands[i].type) << 4) | (operands[i].length));
+
+		if(operands[i].type & OPERAND_PTR_BIT)	buf[ip] |= (OPERAND_PTR_BIT << 4);
+
+			printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
+			printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
+			
+
 		ip += sizeof(uint8_t);
 		operands_len_sum++;
 
 		memcpy(buf + ip, &operands[i].value, operands[i].length);
 		operands_len_sum += operands[i].length;
 
-		if(operands[i].type == OP_LABEL)
+		if((operands[i].type & ~OPERAND_PTR_BIT) == OP_LABEL)
 		{
 			add_to_fixups(asm_info, &operands[i], (reg_t*)(buf + ip));
 		}
@@ -426,30 +438,26 @@ int assemble(asm_info_t* asm_info)
 
 	reg_t cur_ptr = 0;
 
-	size_t cur_len = 0, comment_len = 0, line_num = 0;
+	int cur_len = 0, comment_len = 0, line_num = 0;
+	bool is_comment_started = false;
 	for(size_t i = 0; i < asm_info->src_buf_sz; i++)
 	{	
-		if(asm_info->src_buf[i] != '\n' && asm_info->src_buf[i] != '\r')
+		if(asm_info->src_buf[i] != '\n')
 		{
-			if((asm_info->src_buf[i] == ';' || asm_info->src_buf[i] == '#') && comment_len == 0) 
-				comment_len = 1;	// starting from here every symbol in line is considered comment
+			if((asm_info->src_buf[i] == ';' || asm_info->src_buf[i] == '#') && !is_comment_started) 
+				is_comment_started = true;	// starting from here every symbol in line is considered comment
 			
-			if(!comment_len)	cur_len++;			// Skip comments starting with ;
-			else			comment_len++;
+			if (!is_comment_started)	cur_len++;			// Skip comments starting with ;
+			else				comment_len++;
 
 			continue;
 		}
 
 		line_num++;
 
-		if(cur_len <= 2)
-		{
-			comment_len = 0;
-			continue;
-		}
-
 		if(cur_ptr + MAX_INSTRUCTION_SIZE > asm_info->asm_buf_sz)
 		{
+			printf("realloc!\n");
 			asm_info->asm_buf_sz *= 2;
 			uint8_t* new_buf = realloc(asm_info->asm_buf, asm_info->asm_buf_sz);
 			if(!new_buf)
@@ -466,10 +474,10 @@ int assemble(asm_info_t* asm_info)
 			return -1;
 
 		cur_ptr += instruction_sz;
-		
 
 		cur_len = 0;
 		comment_len = 0;
+		is_comment_started = false;
 	}
 
 	asm_info->asm_buf_sz = cur_ptr;

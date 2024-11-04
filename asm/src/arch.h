@@ -135,13 +135,19 @@ typedef enum REGISTERS : uint8_t
 	REG_INVALID	= 0
 } reg_name_t;
 
+#define OPERAND_PTR_BIT  (1 << 2)
+
 typedef enum OPERANDS : uint8_t 
 {
-	OP_VALUE		= 1,
-	OP_PTR			= 2,
-	OP_REG			= 3,
-	OP_LABEL		= 4,
-	OP_STR			= 5,
+	OP_VALUE		= 0b1,
+	OP_REG			= 0b10,
+
+	OP_REGPTR		= 0b10 | OPERAND_PTR_BIT,
+	OP_VALUEPTR		= 0b1 | OPERAND_PTR_BIT,
+
+	OP_LABEL		= 32,
+	OP_STR			= 33,
+
 	OP_INVALID		= 0,
 } operand_type_t;
 

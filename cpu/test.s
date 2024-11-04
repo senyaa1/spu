@@ -1,27 +1,14 @@
 start:
-	lidt idt
-
-	int 1
-	int 2
-
+	# out [num]
+	# mov [num], 10
+	# mov dx, [num] 
+	# out [num]
+	# dump
+	print sus
 	hlt
 
-idt:
-	db 2
-	dd syscall1, syscall2
-
-
-syscall1:
-	print sus
-	iret
-
-syscall2:
-	print mog
-	iret
-
 sus:
-	db "1!", 0
+	db "amogus", 0
 
-
-mog:
-	db "2!", 0
+num:
+	db 20

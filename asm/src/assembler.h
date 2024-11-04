@@ -2,7 +2,7 @@
 #include "arch.h"
 
 static const size_t INITIAL_ASM_BUF_SIZE = 256;
-static const size_t MAX_INSTRUCTION_SIZE = sizeof(instruction_t) + sizeof(reg_t) * MAX_OPERAND_CNT;
+static const size_t MAX_INSTRUCTION_SIZE = 256;
 
 typedef struct label {
 	char* name;
@@ -28,12 +28,6 @@ typedef struct asm_info
 {
 	asm_state_t state;
 
-	char* src_buf;
-	size_t src_buf_sz;
-
-	uint8_t* asm_buf;
-	size_t asm_buf_sz;
-
 	label_t* labels;
 	size_t label_cnt;
 	size_t labels_sz;
@@ -41,6 +35,13 @@ typedef struct asm_info
 	fixup_t* fixups;
 	size_t fixup_cnt;
 	size_t fixups_sz;
+
+	char* src_buf;
+	size_t src_buf_sz;
+
+	uint8_t* asm_buf;
+	size_t asm_buf_sz;
+
 } asm_info_t;
 
 int assemble(asm_info_t* asm_info);

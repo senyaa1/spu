@@ -13,16 +13,6 @@
 #include "stack.h"
 #include "io.h"
 
-/*
-	read binary
-	initialize registers
-	initialize stack and call stack
-	(maybe start from main label)
-	implement all instructions
-	draw instruction draws on framebuffer
-
-
-	*/
 
 void print_buf(uint8_t* buf, size_t sz)
 {
@@ -103,6 +93,27 @@ int load_idt(cpu_t* cpu)
 	return 0;
 }
 
+void cpu_dump(cpu_t* cpu)
+{
+	#define ENUMDMP(val) printf("\t" #val ": %d \n", cpu->regs[val]);
+
+	printf("CPU\n");
+	printf("==Registers==\n");
+	ENUMDMP(AX)
+	ENUMDMP(BX)
+	ENUMDMP(CX)
+	ENUMDMP(DX)
+	ENUMDMP(EX)
+	ENUMDMP(IP)
+	ENUMDMP(SP)
+	ENUMDMP(FLAGS)
+	ENUMDMP(IDTR)
+	ENUMDMP(GDTR)
+
+	
+	#undef ENUMDMP
+}
+
 int execute(cpu_t* cpu, framebuf_t* fb)
 {
 	while(1)
@@ -114,6 +125,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 		uint8_t operand_cnt = opcode >> 6;
 
 		cpu->regs[IP] += sizeof(instruction_t);
+
 		printf("current insturction: %x\n", inst);
 		printf("operand cnt: %d\n", operand_cnt);
 		printf("ip: %d\n", cpu->regs[IP]);
@@ -126,29 +138,32 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 
 
 			reg_t data = 0;
+
 			switch(operands[i].type)
 			{
 				case OP_VALUE:
 					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
 					operands[i].actual_value = operands[i].value;
 					break;
+				case OP_VALUEPTR:
+					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
+					operands[i].actual_value = cpu->mem[operands[i].value];
+					break;
 				case OP_REG:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
 					operands[i].actual_value = cpu->regs[operands[i].value];
+				case OP_REGPTR:
+					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
+					operands[i].actual_value = cpu->mem[cpu->regs[operands[i].value]];
 					break;
-				case OP_PTR:
-					memcpy(&data, cpu->mem + cpu->regs[IP], sizeof(reg_t));
-					operands[i].value = data;
-					operands[i].actual_value = cpu->mem[operands[i].value];
-					break;
+
 				default:
 					break;
 			}
 			
+			printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
 			printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 			
-			printf("operand %d length: %d\n", i, operands[i].length);
-
 			cpu->regs[IP] += operands[i].length;
 
 		}
@@ -170,7 +185,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 		switch(inst)
 		{
 			case PUSH:
-				stack_push(&cpu->data_stack, &operands[0].value);
+				stack_push(&cpu->data_stack, &operands[0].actual_value);
 				break;
 			case POP:
 				stack_pop(&cpu->data_stack, &cpu->regs[operands[0].value]);
@@ -181,18 +196,27 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, "mov should have 2 operands!\n");
 					return -1;
 				}
+				printf(RED "val: %d\n" RESET, operands[1].actual_value);
 				switch(operands[0].type)
 				{
-					case OP_PTR:
-						cpu->mem[operands[0].value] = operands[1].actual_value;
-						break;
 					case OP_VALUE:
-						fprintf(stderr, RED "can't move in to a fucking value!!\n" RESET);
+						fprintf(stderr, RED "can't move i to a fucking value!!\n" RESET);
 						return -1;
 					case OP_REG:
+						printf(RED "moving to reg\n" RESET);
 						cpu->regs[operands[0].value] = operands[1].actual_value;
 						break;
+					case OP_REGPTR:
+						cpu->mem[cpu->regs[operands[0].value]] = operands[1].actual_value;
+						printf(RED "moving to regptr\n" RESET);
+						break;
+
+					case OP_VALUEPTR:
+						printf(RED "moving to valueptr\n" RESET);
+						cpu->mem[operands[0].value] = operands[1].actual_value;
+						break;
 					default:
+						printf(RED "da hell??\n" RESET);
 						break;
 				}
 				break;
@@ -222,7 +246,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				stack_pop(&cpu->call_stack, &cpu->regs[IP]);
 				break;
 			case DUMP:
-				printf("processor dump!\n");
+				cpu_dump(cpu);
 				break;
 			case CMP:
 				stack_pop(&cpu->call_stack, &a);
@@ -277,10 +301,10 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				{
 					case 0:
 						stack_pop(&cpu->data_stack, &a);
-						printf(GREEN "%d\n" RESET, a);
+						printf(GREEN "%d " RESET, a);
 						break;
 					case 1:
-						printf(GREEN "%d\n" RESET, operands[0].actual_value);
+						printf(GREEN "%d " RESET, operands[0].actual_value);
 						break;
 				}
 				break;
@@ -295,7 +319,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				{
 					case 0:
 						stack_pop(&cpu->data_stack, &a);
-						printf(GREEN "%d\n" RESET, a);
+						printf(GREEN "%d" RESET, a);
 						break;
 					case 1:
 						// printf("printing string at %d\n", operands[0].value);
