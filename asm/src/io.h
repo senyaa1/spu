@@ -15,6 +15,6 @@
 #define BOLD "\e[1m"
 
 
-void print_line(char* line, size_t line_len, size_t line_num);
+void print_line(const char* line, size_t line_len, size_t line_num);
 void print_error(char* error);
 void print_buf(uint8_t* buf, size_t sz);

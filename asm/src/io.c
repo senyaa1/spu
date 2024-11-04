@@ -4,7 +4,7 @@
 
 #include "io.h"
 
-void print_line(char* line, size_t line_len, size_t line_num)
+void print_line(const char* line, size_t line_len, size_t line_num)
 {
 	// fprintf(stderr, "   \t|  " RED BOLD "%*.s\n" RESET, , line);
 	fprintf(stderr, "   %d\t|  " RED BOLD "%.*s\n" RESET, line_num, line_len, line);
