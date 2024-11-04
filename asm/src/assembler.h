@@ -43,5 +43,4 @@ typedef struct asm_info
 
 } asm_info_t;
 
-int assemble(asm_info_t* asm_info);
-int fixup(asm_info_t* asm_info);
+size_t assemble(asm_info_t* asm_info);

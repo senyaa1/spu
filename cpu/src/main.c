@@ -28,14 +28,29 @@ typedef struct idt
 	reg_t* interrupt_vectors;
 } idt_t;
 
+typedef struct gdt_entry
+{
+	reg_t start;
+	reg_t end;
+	uint8_t prot_mode;
+} gdt_entry_t;
+
+typedef struct gdt
+{
+	uint8_t gdt_entry_cnt;
+	gdt_entry_t* gdt_entries;
+} gdt_t;
+
 typedef struct cpu
 {
 	reg_t regs[16];
 	stack_t data_stack;
 	stack_t call_stack;
 	uint8_t* mem;
+	uint8_t priv;
 
 	idt_t idt;
+	gdt_t gdt;
 } cpu_t;
 
 typedef struct framebuf 
@@ -47,8 +62,8 @@ typedef struct framebuf
 
 } framebuf_t;
 
-#define FB_WIDTH 600
-#define FB_HEIGHT 300
+#define FB_WIDTH 480
+#define FB_HEIGHT 360
 
 const size_t FB_SIZE = FB_WIDTH * FB_HEIGHT * sizeof(uint32_t);
 
@@ -88,6 +103,19 @@ int load_idt(cpu_t* cpu)
 
 	for(int i = 0; i < cpu->idt.iv_cnt; i++)
 		memcpy(&cpu->idt.interrupt_vectors[i], &cpu->mem[cpu->regs[IDTR] + 1 + i * sizeof(reg_t)], sizeof(reg_t));
+
+	return 0;
+}
+
+int load_gdt(cpu_t* cpu)
+{
+	cpu->gdt.gdt_entry_cnt = cpu->mem[cpu->regs[GDTR]];
+	free(cpu->gdt.gdt_entries);
+
+	cpu->gdt.gdt_entries = calloc(cpu->gdt.gdt_entry_cnt, sizeof(gdt_entry_t));
+
+	for(int i = 0; i < cpu->gdt.gdt_entry_cnt; i++)
+		memcpy(&cpu->gdt.gdt_entries[i], &cpu->mem[cpu->regs[GDTR] + 1 + i * sizeof(gdt_entry_t)], sizeof(gdt_entry_t));
 
 	return 0;
 }
@@ -147,6 +175,7 @@ void set_flags(cpu_t* cpu, reg_t res)
 
 int execute(cpu_t* cpu, framebuf_t* fb)
 {
+	cpu->priv = 0;	// start in ring 0
 	while(1)
 	{
 		uint8_t opcode = cpu->mem[cpu->regs[IP]];
@@ -193,6 +222,8 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				default:
 					break;
 			}
+
+			// check if allowed by gdt
 			
 			// printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
 			// printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
@@ -283,36 +314,36 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					return -1;
 				}
 				
-				uint32_t* dataptr = (uint32_t*)(cpu->mem + operands[0].actual_value);
+				uint8_t* dataptr = (uint8_t*)(cpu->mem + operands[0].actual_value);
 
 				size_t y_offset = (fb->vinfo.yres - FB_HEIGHT) / 2;
 				size_t x_offset = (fb->vinfo.xres - FB_WIDTH) / 2;
-
-
-
 				for (size_t y = 0; y < FB_HEIGHT; y++)
 				{
 					for (size_t x = 0; x < FB_WIDTH; x++) 
 					{
 						size_t location = (x + fb->vinfo.xoffset + x_offset) * (fb->vinfo.bits_per_pixel/8) + (y + fb->vinfo.yoffset + y_offset) * fb->finfo.line_length;
 
-						if (fb->vinfo.bits_per_pixel == 32) {
-							*(fb->addr + location) = 100;			// Some blue
-							*(fb->addr + location + 1) = 15+(x-100)/2;	// A little green
-							*(fb->addr + location + 2) = 200-(y-100)/5;	// A lot of red
-							*(fb->addr + location + 3) = 0;			// No transparency
-						} else  { 
-							int b = 10;
-							int g = (x-100)/6;     
-							int r = 31-(y-100)/16;    
-							unsigned short int t = r<<11 | g << 5 | b;
-							*((unsigned short int*)(fb->addr + location)) = t;
+						int r = dataptr[y * FB_WIDTH + x];
+						int g = dataptr[y * FB_WIDTH + x];
+						int b = dataptr[y * FB_WIDTH + x];
+
+						if (fb->vinfo.bits_per_pixel == 32) 
+						{
+							*(fb->addr + location) = b;
+							*(fb->addr + location + 1) = g;
+							*(fb->addr + location + 2) = r;
+							*(fb->addr + location + 3) = 0;
+						} 
+						else  
+						{ 
+							*((unsigned short int*)(fb->addr + location)) = (r << 11 | g << 5 | b);
 						}
 
 					}
 				}
 
-				printf(GREEN UNDERLINE "copied to framebuffer!\n" RESET);
+				usleep(50000);	// too fast
 				break;
 			case HLT:
 				printf(GREEN "halting!\n" RESET);
@@ -371,6 +402,12 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				}
 				break;
 			case LIDT:
+				if(cpu->priv != 0)
+				{
+					fprintf(stderr, RED "No privs to load IDT!\n" RESET);
+					return -1;
+				}
+
 				cpu->regs[IDTR] = operands[0].value;
 				if(load_idt(cpu))
 				{
@@ -381,11 +418,30 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				printf(BLUE "loaded interrupt descriptor table at %d: sz: %d\n" RESET, cpu->regs[IDTR], cpu->idt.iv_cnt);
 				break;
 			case LGDT:
+				if(cpu->priv != 0)
+				{
+					fprintf(stderr, RED "No privs to load GDT!\n" RESET);
+					return -1;
+				}
+
 				cpu->regs[GDTR] = operands[0].value;
-				printf(BLUE "loaded global descriptor table at %x: first byte: %x\n" RESET, cpu->regs[GDTR], cpu->mem[cpu->regs[GDTR]]);
+
+				if(load_gdt(cpu))
+				{
+					fprintf(stderr, RED "Unable to load GDT!\n" RESET);
+					return -1;
+				}
+
+				printf(BLUE "loaded global descriptor table, entry cnt: %d\n" RESET, cpu->gdt.gdt_entry_cnt);
 				break;
 			case IRET:
+				if(cpu->priv != 0)
+				{
+					fprintf(stderr, RED "No privs to IRET!\n" RESET);
+					return -1;
+				}
 				stack_pop(&cpu->call_stack, &cpu->regs[IP]);
+				cpu->priv = 1;
 				break;
 			case INT:
 				stack_push(&cpu->call_stack, &cpu->regs[IP]);
@@ -396,6 +452,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					return -1;
 				}
 				cpu->regs[IP] = cpu->idt.interrupt_vectors[operands[0].actual_value - 1];
+				cpu->priv = 0;
 				break;
 			default:
 				fprintf(stderr, RED "Encountered INVALID instruction!: %d (%x) \n" RESET, inst, inst);
@@ -417,7 +474,7 @@ int main(int argc, char** argv)
 	STACK_INIT(&cpu.data_stack, sizeof(reg_t), 16);
 	STACK_INIT(&cpu.call_stack, sizeof(reg_t), 16);
 
-	int sz = read_file(argv[1], (char**)&cpu.mem); 
+	size_t sz = read_file(argv[1], (char**)&cpu.mem); 
 	if(sz < 0)
 	{
 		fprintf(stderr,"unable to read the binary!\n");

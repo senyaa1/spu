@@ -16,7 +16,7 @@
 #include "parser.h"
 
 
-static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf, reg_t ip, size_t line_num, asm_info_t* asm_info)
+static size_t assemble_instruction(const char* line, size_t line_len, uint8_t* buf, reg_t ip, size_t line_num, asm_info_t* asm_info)
 {
 	// printf("line: \"%.*s\"\n", line_len, line);
 	char* t_line = (char*)line;
@@ -35,7 +35,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 	size_t instruction_word_len = t_len;
 	// match first word (instruction)
-	for(int i = 0; i < t_len; i++)
+	for(size_t i = 0; i < t_len; i++)
 	{
 		if(isspace(t_line[i]))
 		{
@@ -121,7 +121,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 	size_t cur_operand_len = 0;
 	size_t operand_cnt = 0;
-	for(int i = instruction_word_len; i <= t_len; i++)
+	for(size_t i = instruction_word_len; i <= t_len; i++)
 	{
 		if(t_line[i] != ',' && i != t_len)
 		{
@@ -223,7 +223,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	}
 
 	size_t operands_len_sum = 0;
-	for(int i = 0; i < operand_cnt; i++)
+	for(size_t i = 0; i < operand_cnt; i++)
 	{
 		buf[ip] = ((((operands[i].type & ~OPERAND_PTR_BIT) ==	OP_LABEL ? 
 									OP_VALUE :
@@ -250,7 +250,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 
 
-int assemble(asm_info_t* asm_info)
+size_t assemble(asm_info_t* asm_info)
 {
 	if(asm_info->state != NOT_ASMED)
 		return -1;
@@ -260,7 +260,7 @@ int assemble(asm_info_t* asm_info)
 
 	reg_t cur_ptr = 0;
 
-	int cur_len = 0, comment_len = 0, line_num = 0;
+	size_t cur_len = 0, comment_len = 0, line_num = 0;
 	bool is_comment_started = false;
 	for(size_t i = 0; i < asm_info->src_buf_sz; i++)
 	{	
@@ -277,7 +277,7 @@ int assemble(asm_info_t* asm_info)
 
 		line_num++;
 
-		if(cur_ptr + 10 > asm_info->asm_buf_sz)
+		if(cur_ptr + 256 > asm_info->asm_buf_sz)
 		{
 			asm_info->asm_buf_sz *= 2;
 			uint8_t* new_buf = realloc(asm_info->asm_buf, asm_info->asm_buf_sz);
@@ -289,7 +289,7 @@ int assemble(asm_info_t* asm_info)
 			asm_info->asm_buf = new_buf;
 		}
 
-		int instruction_sz = assemble_instruction(asm_info->src_buf + i - cur_len - comment_len, cur_len, asm_info->asm_buf, cur_ptr, line_num, asm_info);
+		size_t instruction_sz = assemble_instruction(asm_info->src_buf + i - cur_len - comment_len, cur_len, asm_info->asm_buf, cur_ptr, line_num, asm_info);
 
 		if(instruction_sz < 0) 
 			return -1;

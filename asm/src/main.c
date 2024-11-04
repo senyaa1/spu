@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <strings.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include "io.h"
 #include "fs.h"
@@ -37,7 +38,7 @@ int main(int argc, char** argv)
 		goto end;
 	}
 
-	int sz = read_file(argv[optind], &(asm_info.src_buf));
+	size_t sz = read_file(argv[optind], &(asm_info.src_buf));
 	if(sz < 0)
 	{
 		print_error("unable to read the source code!");
@@ -47,7 +48,7 @@ int main(int argc, char** argv)
 
 	asm_info.src_buf_sz = sz;
 
-	int final_sz = assemble(&asm_info);
+	size_t final_sz = assemble(&asm_info);
 	if(final_sz < 0)
 	{
 		retcode = -1;
@@ -62,7 +63,7 @@ int main(int argc, char** argv)
 
 	// print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
 
-	int out_sz = write_file(output_filename, asm_info.asm_buf, asm_info.asm_buf_sz);
+	size_t out_sz = write_file(output_filename, asm_info.asm_buf, asm_info.asm_buf_sz);
 
 	if(out_sz < 0)
 	{

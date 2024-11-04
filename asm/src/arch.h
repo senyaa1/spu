@@ -6,13 +6,10 @@
 /*
 //	IO
 
-	IN
-	OUT
-	DRAW
-	DUMP
+- MATH	6
+float operations
+sqrt
 
-
-	- MATH	6
 	sin
 	cos
 		using taylor polynomials

@@ -17,7 +17,7 @@ void add_to_fixups(asm_info_t* asm_info, operand_t* op, reg_t location)
 		asm_info->fixups = (fixup_t*)calloc(asm_info->fixups_sz, sizeof(fixup_t));
 	}
 
-	if(asm_info->fixups_sz < (asm_info->fixup_cnt + 1) * sizeof(fixup_t))
+	if(asm_info->fixups_sz < (asm_info->fixup_cnt + 2) * sizeof(fixup_t))
 	{
 		asm_info->fixups_sz *= 2;
 		asm_info->fixups = realloc(asm_info->fixups, asm_info->fixups_sz);
@@ -34,7 +34,7 @@ void add_to_labels(asm_info_t* asm_info, char* name, size_t name_len, reg_t loca
 		asm_info->labels = (label_t*)calloc(asm_info->labels_sz, sizeof(label_t));
 	}
 
-	if(asm_info->labels_sz < (asm_info->label_cnt + 1) * sizeof(label_t))
+	if(asm_info->labels_sz < (asm_info->label_cnt + 2) * sizeof(label_t))
 	{
 		asm_info->labels_sz *= 2;
 		asm_info->labels = realloc(asm_info->labels, asm_info->labels_sz);
