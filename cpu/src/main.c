@@ -323,7 +323,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 						break;
 					case 1:
 						// printf("printing string at %d\n", operands[0].value);
-						printf(GREEN "%s\n" RESET, cpu->mem + operands[0].actual_value);
+						printf(GREEN "%s" RESET, cpu->mem + operands[0].actual_value);
 						break;
 				}
 				break;

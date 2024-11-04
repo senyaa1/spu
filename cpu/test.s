@@ -4,11 +4,12 @@ start:
 	# mov dx, [num] 
 	# out [num]
 	# dump
+	mov [sus], 0x41
 	print sus
 	hlt
 
 sus:
-	db "amogus", 0
+	db "sussy", 10, 0
 
 num:
 	db 20

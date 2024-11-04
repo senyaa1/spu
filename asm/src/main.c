@@ -6,6 +6,7 @@
 #include "io.h"
 #include "fs.h"
 #include "assembler.h"
+#include "fixups.h"
 
 
 int main(int argc, char** argv)
@@ -53,7 +54,7 @@ int main(int argc, char** argv)
 		goto end;
 	}
 
-	print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
+	// print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
 
 	if(fixup(&asm_info) < 0)
 	{

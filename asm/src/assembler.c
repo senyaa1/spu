@@ -9,186 +9,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <errno.h>
 
 #include "assembler.h"
 #include "io.h"
-
-
-static size_t strim(char** s, size_t line_len)
-{
-	char* trimmed_ptr = *s;
-
-	// left trim
-	size_t i = 0;
-	while(i < line_len)
-	{
-		if(!isspace(*trimmed_ptr))
-			break;
-		trimmed_ptr++;
-	}
-
-	size_t new_len = line_len - (trimmed_ptr - *s);
-
-	// right trim
-	while(new_len > 0)
-	{
-		if(!isspace(trimmed_ptr[new_len - 1]))
-			break;
-		new_len--;
-	}
-
-	*s = trimmed_ptr;
-	return new_len;
-}
-
-static int read_value(char* valuestr, size_t n, uint64_t* val)
-{
-	char* terminated_str = (char*)calloc(n + 1, sizeof(char));
-	memcpy(terminated_str, valuestr, n);
-
-	char *end = 0;
-	errno = 0;
-	*val = strtoll(terminated_str, &end, 0);
-	bool range_error = errno == ERANGE;
-
-	if(range_error || (end - terminated_str) != n)
-	{
-		free(terminated_str);
-		return 0;
-	}
-
-	free(terminated_str);
-	return 1;
-}
-
-static void add_to_fixups(asm_info_t* asm_info, operand_t* op, reg_t* location)
-{
-	printf(RED "adding to fixups!\n" RESET);
-	if(asm_info->fixups_sz == 0)	
-	{
-		asm_info->fixups_sz = 10 * sizeof(fixup_t);
-		asm_info->fixups = (fixup_t*)calloc(asm_info->fixups_sz, sizeof(fixup_t));
-		printf(GREEN "inited fixups!\n" RESET);
-	}
-
-	if(asm_info->fixups_sz < (asm_info->fixup_cnt + 1) * sizeof(fixup_t))
-	{
-		asm_info->fixups_sz *= 2;
-		asm_info->fixups = realloc(asm_info->fixups, asm_info->fixups_sz);
-	}
-
-	asm_info->fixups[asm_info->fixup_cnt++] = (fixup_t){op->operand_text, op->operand_text_len, location};
-}
-
-static void add_to_labels(asm_info_t* asm_info, char* name, size_t name_len, reg_t location)
-{
-	printf(RED "adding to labels!\n" RESET);
-	if(asm_info->labels_sz == 0)	
-	{
-		asm_info->labels_sz = 10 * sizeof(label_t);
-		asm_info->labels = (label_t*)calloc(asm_info->labels_sz, sizeof(label_t));
-	}
-
-	if(asm_info->labels_sz < (asm_info->label_cnt + 1) * sizeof(label_t))
-	{
-		asm_info->labels_sz *= 2;
-		asm_info->labels = realloc(asm_info->labels, asm_info->labels_sz);
-	}
-
-	asm_info->labels[asm_info->label_cnt++] = (label_t){name, name_len, location};
-}
-
-
-static operand_t parse_operand(char* operand_ptr, size_t len)
-{
-	size_t operand_len = strim(&operand_ptr, len);
-	// printf("encountered operand (%d): \"%.*s\"\n", operand_len, operand_len, operand_ptr);
-
-	operand_t op = { 
-		.type = OP_INVALID,
-		.length = 0, 
-		.value = 0,
-	};
-
-	if (operand_ptr[0] == '[' && operand_ptr[operand_len - 1] == ']')	// recursively parse!
-	{
-		op = parse_operand(operand_ptr + 1, operand_len - 2);
-		if(!op.type)
-		{
-			print_error("can't parse operand value!");
-			op.type = OP_INVALID;
-			return op;
-		}
-		printf("parsed [ptr] operand as type %d\n", op.type);
-		op.type |= OPERAND_PTR_BIT;
-
-		return op;
-	}
-
-	if (operand_ptr[0] == '"' && operand_ptr[operand_len - 1] == '"')
-	{
-		op.length = operand_len - 2;
-		op.type = OP_STR;
-		op.operand_text = operand_ptr + 1;
-		op.operand_text_len = operand_len - 2;
-
-		return op;
-	}
-	
-	#define REGCMP(reg_name)										\
-		if(strlen(#reg_name) == operand_len && strncasecmp(operand_ptr, #reg_name, operand_len) == 0)	\
-		{												\
-			op.value = reg_name;									\
-		}												\
-
-	REGCMP(AX)
-	REGCMP(BX)
-	REGCMP(CX)
-	REGCMP(DX)
-	REGCMP(EX)
-	REGCMP(IP)
-	REGCMP(SP)
-	REGCMP(FLAGS)
-	REGCMP(IDTR)
-	REGCMP(GDTR)
-
-	if(op.value != 0)
-	{
-		op.type = OP_REG;
-		op.length = 1;
-		return op;
-	}
-
-
-	uint64_t value = 0;
-	if(read_value(operand_ptr, operand_len, &value))
-	{
-		op.type = OP_VALUE;
-		op.length = sizeof(reg_t);
-		op.value = value;
-		return op;
-	}
-
-	for(int i = 0; i < operand_len; i++)		// no spaces in labels
-	{
-		if((ispunct(operand_ptr[i]) && operand_ptr[i] != '_') || isspace(operand_ptr[i]))
-		{
-			op.type = OP_INVALID;
-			return op;
-		}
-	}
-
-	// if can't be parsed as register, memory ptr or value, then consider it a label
-	op.type = OP_LABEL;
-	op.length = sizeof(reg_t);
-	op.value = 0xDEADBEEF;
-	op.operand_text = operand_ptr;
-	op.operand_text_len = operand_len;
-	
-	return op;
-	#undef REGCMP
-}
+#include "fixups.h"
+#include "parser.h"
 
 
 static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf, reg_t ip, size_t line_num, asm_info_t* asm_info)
@@ -361,7 +186,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 				print_line(line, line_len, line_num);
 			}
 
-			if(operands[i].type == OP_LABEL) add_to_fixups(asm_info, &operands[i], (reg_t*)(buf + ip));
+			if(operands[i].type == OP_LABEL) add_to_fixups(asm_info, &operands[i], ip);
 
 			switch(expr)
 			{
@@ -405,8 +230,8 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 		if(operands[i].type & OPERAND_PTR_BIT)	buf[ip] |= (OPERAND_PTR_BIT << 4);
 
-			printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
-			printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
+		printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
+		printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 			
 
 		ip += sizeof(uint8_t);
@@ -417,7 +242,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 		if((operands[i].type & ~OPERAND_PTR_BIT) == OP_LABEL)
 		{
-			add_to_fixups(asm_info, &operands[i], (reg_t*)(buf + ip));
+			add_to_fixups(asm_info, &operands[i], ip);
 		}
 
 		ip += operands[i].length;
@@ -455,9 +280,9 @@ int assemble(asm_info_t* asm_info)
 
 		line_num++;
 
-		if(cur_ptr + MAX_INSTRUCTION_SIZE > asm_info->asm_buf_sz)
+		if(cur_ptr + 10 > asm_info->asm_buf_sz)
 		{
-			printf("realloc!\n");
+			printf(BLUE "REALLOC!\n" RESET);
 			asm_info->asm_buf_sz *= 2;
 			uint8_t* new_buf = realloc(asm_info->asm_buf, asm_info->asm_buf_sz);
 			if(!new_buf)
@@ -485,40 +310,3 @@ int assemble(asm_info_t* asm_info)
 	return cur_ptr;
 }
 
-
-int fixup(asm_info_t* asm_info)
-{
-	if(asm_info->state != ASM_PASS1)
-		return -1;
-
-	for(int i = 0; i < asm_info->fixup_cnt; i++)
-	{
-		bool found = false;
-		for(int j = 0; j < asm_info->label_cnt; j++)
-		{
-			#define min(a,b) ((a < b) ? a : b)
-			size_t len1 = asm_info->labels[j].name_len, len2 = asm_info->fixups[i].name_len;
-			if(len1 != len2 || strncmp(asm_info->fixups[i].name, asm_info->labels[j].name, len1) != 0)
-				continue;
-			#undef min
-
-			memcpy(asm_info->fixups[i].location, &asm_info->labels[j].value, sizeof(reg_t));
-			found = true;
-			break;
-		}
-
-		if(!found)
-		{
-			char* error_msg = 0;
-
-			asprintf(&error_msg, "label " WHITE UNDERLINE "%.*s" RESET BOLD " is used but not defined!", asm_info->fixups[i].name_len, asm_info->fixups[i].name);
-			print_error(error_msg);
-
-			free(error_msg);
-			return -1;
-		}
-	}
-
-	asm_info->state = ASMED;
-	return 0;
-}

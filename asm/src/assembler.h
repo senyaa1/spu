@@ -14,9 +14,8 @@ typedef struct label {
 typedef struct fixup {
 	char* name;
 	size_t name_len;
-	reg_t *location;
+	reg_t location;
 } fixup_t;
-
 
 typedef enum ASMSTATE {
 	NOT_ASMED = 0,
