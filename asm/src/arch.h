@@ -5,6 +5,8 @@
 
 /*
 //	IO
+//
+//	check if allowed by gdt
 
 - MATH	6
 float operations
@@ -36,8 +38,8 @@ typedef enum INSTRUCTIONS : uint8_t
 	SUB	= 5,
 	MUL	= 6,
 	DIV	= 7,
-	// SIN	= 8,
-	// COS	= 9,
+	SIN	= 8,
+	COS	= 9,
 	DUMP	= 10,
 	DRAW	= 11,
 	IN	= 12,
@@ -63,7 +65,11 @@ typedef enum INSTRUCTIONS : uint8_t
 	LIDT	= 32,
 	LGDT	= 33,
 	IRET	= 34,
-
+	SQRT	= 35,
+	FADD	= 36,
+	FSUB	= 37,
+	FMUL	= 38,
+	FDIV	= 39,
 	INST_INVALID	= 0
 } instruction_t;
 

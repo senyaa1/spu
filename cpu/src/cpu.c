@@ -368,6 +368,16 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				cpu->regs[IP] = cpu->idt.interrupt_vectors[operands[0].actual_value - 1];
 				cpu->priv = 0;
 				break;
+			case SQRT:
+				break;
+			case FADD:
+				break;
+			case FSUB:
+				break;
+			case FMUL:
+				break;
+			case FDIV:
+				break;
 			default:
 				fprintf(stderr, RED "Encountered INVALID instruction!: %d (%x) \n" RESET, inst, inst);
 				return -1;
