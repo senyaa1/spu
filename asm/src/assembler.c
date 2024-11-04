@@ -21,13 +21,13 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	// printf("line: \"%.*s\"\n", line_len, line);
 	char* t_line = (char*)line;
 	size_t t_len = strim(&t_line, line_len);
-	printf("trimmed line: \"%.*s\"\n", t_len, t_line);
+	// printf("trimmed line: \"%.*s\"\n", t_len, t_line);
 
 	if(t_len == 0) return 0;
 
 	if(t_line[t_len - 1] == ':')	// label
 	{
-		printf("encountered label named %.*s at 0x%x\n", t_len - 1, t_line, ip);
+		// printf("encountered label named %.*s at 0x%x\n", t_len - 1, t_line, ip);
 		add_to_labels(asm_info, t_line, t_len - 1, ip);
 		return 0;
 	}
@@ -63,11 +63,11 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 	instruction_t inst = INST_INVALID;
 	
-	#define INSTCMP(inst_name)						\
-		if(strncasecmp(t_line, #inst_name, instruction_word_len) == 0)	\
-		{								\
-			inst = inst_name;					\
-		}								\
+	#define INSTCMP(inst_name)												\
+		if(strncasecmp(t_line, #inst_name, instruction_word_len) == 0 && instruction_word_len == strlen(#inst_name))	\
+		{														\
+			inst = inst_name;											\
+		}														\
 
 	INSTCMP(PUSH)
 	INSTCMP(POP)
@@ -78,7 +78,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(DIV)
 	INSTCMP(DUMP)
 	INSTCMP(DRAW)
-	INSTCMP(INPUT)
+	INSTCMP(IN)
 	INSTCMP(OUT)
 	INSTCMP(HLT)
 	INSTCMP(SLEEP)
@@ -100,6 +100,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	INSTCMP(LIDT)
 	INSTCMP(LGDT)
 	INSTCMP(IRET)
+	INSTCMP(CMP)
 
 	#undef INSTCMP
 
@@ -114,7 +115,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	// no operands
 
 	// operands
-	printf("operands: %.*s\n", t_len - instruction_word_len, t_line + instruction_word_len);
+	// printf("operands: %.*s\n", t_len - instruction_word_len, t_line + instruction_word_len);
 
 	operand_t operands[MAX_OPERAND_CNT] = { 0 };
 
@@ -127,7 +128,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 			cur_operand_len++;
 			continue;
 		}
-		printf("cur operand len: %d\n", cur_operand_len);
+		// printf("cur operand len: %d\n", cur_operand_len);
 
 		operand_t op = parse_operand(t_line + i - cur_operand_len, cur_operand_len);
 		operands[operand_cnt++] = op;
@@ -155,7 +156,7 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 		}
 
 		buf[ip] = inst | (operand_cnt << 6);
-		printf("operand_cnt: %d\n", operand_cnt);
+		// printf("operand_cnt: %d\n", operand_cnt);
 		ip += sizeof(instruction_t);
 		if(instruction_word_len == t_len)
 			return sizeof(instruction_t);
@@ -165,8 +166,8 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 	// make a list of expected operands
 
 
-	for (int i = 0; i < operand_cnt; i++)
-		printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
+	// for (int i = 0; i < operand_cnt; i++)
+	// 	printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 
 	if(expr)
 	{
@@ -230,10 +231,6 @@ static int assemble_instruction(const char* line, size_t line_len, uint8_t* buf,
 
 		if(operands[i].type & OPERAND_PTR_BIT)	buf[ip] |= (OPERAND_PTR_BIT << 4);
 
-		printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
-		printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
-			
-
 		ip += sizeof(uint8_t);
 		operands_len_sum++;
 
@@ -282,7 +279,6 @@ int assemble(asm_info_t* asm_info)
 
 		if(cur_ptr + 10 > asm_info->asm_buf_sz)
 		{
-			printf(BLUE "REALLOC!\n" RESET);
 			asm_info->asm_buf_sz *= 2;
 			uint8_t* new_buf = realloc(asm_info->asm_buf, asm_info->asm_buf_sz);
 			if(!new_buf)

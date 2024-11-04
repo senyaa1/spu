@@ -54,15 +54,13 @@ int main(int argc, char** argv)
 		goto end;
 	}
 
-	// print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
-
 	if(fixup(&asm_info) < 0)
 	{
 		retcode = -1;
 		goto end;
 	}
 
-	print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
+	// print_buf(asm_info.asm_buf, asm_info.asm_buf_sz);
 
 	int out_sz = write_file(output_filename, asm_info.asm_buf, asm_info.asm_buf_sz);
 

@@ -4,56 +4,6 @@
 #include <stdlib.h>
 
 /*
-	STRUCTURE
-
-
-		opcode byte 1
-	/-----------------------\			
-	1 2 		3 4 5 6 7 8	
-	operandcnt	instruction num	type    length	
-
-
-
-*/
-/*
-	ISA
-
-//	REGISTERS
-	
-	stack pointer		SP!!!
-	base pointer		BP
-	instruction pointer	IP
-	
-	AX -	general purpose registers
-	BX  
-	CX
-	DX
-	EX
-
-	FLAGS (ZF, CF, SF, OF, IF)
-
-	IDTR - interrupt descriptor table location, which is loaded by LIDT instruction
-	Interrupts can be send to cpu via process signals, appropriate interrupt handlers are selected via IDT
-//	
-
-
-// ASM FEATURES
-//	CONTROL FLOW	
-//	call
-//	ret
-//	jmp
-//		jz
-/		jnz
-
-//		je, jne -> and then jump
-//		jl
-//		jle
-//		jg
-//		jge
-//
-//
-	
-
 //	IO
 
 	IN
@@ -77,7 +27,7 @@ typedef enum EXPRESSIONS : uint8_t
 	UNDEFINED	= 0
 } expression_t;
 
-typedef uint32_t reg_t;
+typedef int32_t reg_t;
 #define MAX_OPERAND_CNT 4
 
 typedef enum INSTRUCTIONS : uint8_t
@@ -93,7 +43,7 @@ typedef enum INSTRUCTIONS : uint8_t
 	// COS	= 9,
 	DUMP	= 10,
 	DRAW	= 11,
-	INPUT	= 12,
+	IN	= 12,
 	OUT	= 13,
 	HLT	= 14,
 	SLEEP	= 15,
@@ -128,26 +78,29 @@ typedef enum REGISTERS : uint8_t
 	DX		= 4,
 	EX		= 5,
 	IP		= 6,
-	SP		= 7,
-	FLAGS		= 8,
-	IDTR		= 9,
-	GDTR		= 10,
+	FLAGS		= 7,
+	IDTR		= 8,
+	GDTR		= 9,
 	REG_INVALID	= 0
 } reg_name_t;
+
+enum FLAGS : uint8_t
+{
+	ZF = 1 << 0,
+	SF = 1 << 1,
+	IF = 1 << 2,
+};
 
 #define OPERAND_PTR_BIT  (1 << 2)
 
 typedef enum OPERANDS : uint8_t 
 {
-	OP_VALUE		= 0b1,
-	OP_REG			= 0b10,
-
-	OP_REGPTR		= 0b10 | OPERAND_PTR_BIT,
-	OP_VALUEPTR		= 0b1 | OPERAND_PTR_BIT,
-
+	OP_VALUE		= 1,
+	OP_VALUEPTR		= 1	| OPERAND_PTR_BIT,
+	OP_REG			= 2,
+	OP_REGPTR		= 2	| OPERAND_PTR_BIT,
 	OP_LABEL		= 32,
 	OP_STR			= 33,
-
 	OP_INVALID		= 0,
 } operand_type_t;
 

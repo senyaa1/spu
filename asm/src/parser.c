@@ -79,7 +79,7 @@ operand_t parse_operand(char* operand_ptr, size_t len)
 			op.type = OP_INVALID;
 			return op;
 		}
-		printf("parsed [ptr] operand as type %d\n", op.type);
+		// printf("parsed [ptr] operand as type %d\n", op.type);
 		op.type |= OPERAND_PTR_BIT;
 
 		return op;
@@ -107,7 +107,6 @@ operand_t parse_operand(char* operand_ptr, size_t len)
 	REGCMP(DX)
 	REGCMP(EX)
 	REGCMP(IP)
-	REGCMP(SP)
 	REGCMP(FLAGS)
 	REGCMP(IDTR)
 	REGCMP(GDTR)

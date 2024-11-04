@@ -7,7 +7,7 @@
 #include <sys/ioctl.h>
 
 #include <linux/fb.h>
-
+	
 #include "arch.h"
 #include "fs.h"
 #include "stack.h"
@@ -41,42 +41,43 @@ typedef struct cpu
 typedef struct framebuf 
 {
 	int fd;
-	void* addr;
+	uint32_t* addr;
+	size_t actual_width;
+	size_t actual_height;
 } framebuf_t;
 
-#define FB_WIDTH 400
-#define FB_HEIGHT 800
+#define FB_WIDTH 600
+#define FB_HEIGHT 300
 
+const size_t FB_SIZE = FB_WIDTH * FB_HEIGHT * sizeof(uint32_t);
+
+const char* FB_DEV = "/dev/fb1";
 
 int initialize_framebuffer(framebuf_t* fb)
 {
-	int fbfd = open("/dev/fb0", O_RDWR);
+	int fbfd = open(FB_DEV, O_RDWR);
 
-	if (fbfd == -1) 
-		return -1;
+	if (fbfd == -1) return -1;
+
 	struct fb_var_screeninfo vinfo;
 	ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
 
-	fb->addr = mmap(NULL, FB_WIDTH * FB_HEIGHT * sizeof(uint32_t), PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
+	fb->addr = mmap(NULL, FB_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
 
-	if(fb->addr == MAP_FAILED)
-		return -1;
+	fb->actual_width = vinfo.xres;
+	fb->actual_height = vinfo.yres;
 
-	for (int y=100; y<200; y++) {
-		for (int x=100; x<200; x++) {
-			*(unsigned int*)fb->addr = 0x00FF0000; // Red
-			fb->addr += 4;
-		}
-	}
+	printf("width: %d\theight: %d\n", fb->actual_width, fb->actual_height);
+
+	if(fb->addr == MAP_FAILED) return -1;
 
 	return 0;
 }
 
 void destroy_framebuffer(framebuf_t* fb)
 {
-	if(fb->addr == 0) 
-		return;
-	munmap(fb->addr, FB_WIDTH * FB_HEIGHT * sizeof(uint32_t));
+	if(fb->addr == 0)  return;
+	munmap(fb->addr, FB_SIZE);
 	close(fb->fd);
 }
 
@@ -95,24 +96,56 @@ int load_idt(cpu_t* cpu)
 
 void cpu_dump(cpu_t* cpu)
 {
-	#define ENUMDMP(val) printf("\t" #val ": %d \n", cpu->regs[val]);
+	#define ENUMDMP(val)	printf(BLUE #val YELLOW "\t= 0x%X \n" RESET, cpu->regs[val]);
+	#define FLAGDMP(val)	printf(((cpu->regs[FLAGS] & val) ? (GREEN UNDERLINE #val RESET " ") : (RED #val RESET " ")));
 
 	printf("CPU\n");
-	printf("==Registers==\n");
+	printf(WHITE UNDERLINE "Registers\n" RESET);
+	
 	ENUMDMP(AX)
 	ENUMDMP(BX)
 	ENUMDMP(CX)
 	ENUMDMP(DX)
 	ENUMDMP(EX)
 	ENUMDMP(IP)
-	ENUMDMP(SP)
-	ENUMDMP(FLAGS)
 	ENUMDMP(IDTR)
 	ENUMDMP(GDTR)
+	ENUMDMP(FLAGS)
 
-	
+	printf("\t  ");
+	FLAGDMP(ZF)
+	FLAGDMP(SF)
+	FLAGDMP(IF)
+
+	printf("\n\n");
+
+	printf(WHITE UNDERLINE "Call Stack\n" RESET);
+	stack_print(&cpu->call_stack);
+
+	printf(WHITE UNDERLINE "Data Stack\n" RESET);
+	stack_print(&cpu->data_stack);
+
 	#undef ENUMDMP
+	#undef FLAGDMP
 }
+
+void set_flags(cpu_t* cpu, reg_t res)
+{
+	if(res == 0)	cpu->regs[FLAGS] |= ZF;
+	else		cpu->regs[FLAGS] &= ~ZF;
+
+	if(res < 0)	cpu->regs[FLAGS] |= SF;
+	else		cpu->regs[FLAGS] &= ~SF;
+}
+
+#define BINARY_OP(INST, OP)			\
+       case INST:				\
+       stack_pop(&cpu->data_stack, &a);		\
+       stack_pop(&cpu->data_stack, &b);		\
+       OP;					\
+       stack_push(&cpu->data_stack, &res);	\
+       break;					\
+
 
 int execute(cpu_t* cpu, framebuf_t* fb)
 {
@@ -120,22 +153,20 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 	{
 		uint8_t opcode = cpu->mem[cpu->regs[IP]];
 		instruction_t inst = opcode & 0b00111111;
-
 		operand_t operands[MAX_OPERAND_CNT] = { 0 };
 		uint8_t operand_cnt = opcode >> 6;
 
 		cpu->regs[IP] += sizeof(instruction_t);
 
-		printf("current insturction: %x\n", inst);
-		printf("operand cnt: %d\n", operand_cnt);
-		printf("ip: %d\n", cpu->regs[IP]);
+		// printf("current insturction: %x\n", inst);
+		// printf("operand cnt: %d\n", operand_cnt);
+		// printf("ip: %d\n", cpu->regs[IP]);
 		
 		for(int i = 0; i < operand_cnt; i++)
 		{
 			operands[i].type = cpu->mem[cpu->regs[IP]] >> 4;
 			operands[i].length = cpu->mem[cpu->regs[IP]] & 0b1111;
 			cpu->regs[IP]++;
-
 
 			reg_t data = 0;
 
@@ -145,13 +176,17 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
 					operands[i].actual_value = operands[i].value;
 					break;
+
 				case OP_VALUEPTR:
 					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
 					operands[i].actual_value = cpu->mem[operands[i].value];
 					break;
+
 				case OP_REG:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
 					operands[i].actual_value = cpu->regs[operands[i].value];
+					break;
+
 				case OP_REGPTR:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
 					operands[i].actual_value = cpu->mem[cpu->regs[operands[i].value]];
@@ -161,27 +196,14 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					break;
 			}
 			
-			printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
-			printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
+			// printf("is ptr: %d\t", ((operands[i].type & OPERAND_PTR_BIT) != 0));
+			// printf("type: %d,\tlength: %d\tvalue: 0x%x\t\n", operands[i].type, operands[i].length, operands[i].value);
 			
 			cpu->regs[IP] += operands[i].length;
 
 		}
-		// printf("ip: %d\n", cpu->regs[IP]);
-		
 		
 		reg_t a = 0, b = 0, res = 0;
-
-
-		#define BINARY_OP(INST, OP)			\
-		case INST:					\
-			stack_pop(&cpu->data_stack, &a);	\
-			stack_pop(&cpu->data_stack, &b);	\
-			OP;					\
-			stack_push(&cpu->data_stack, &res);	\
-			break;					\
-
-
 		switch(inst)
 		{
 			case PUSH:
@@ -203,20 +225,14 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 						fprintf(stderr, RED "can't move i to a fucking value!!\n" RESET);
 						return -1;
 					case OP_REG:
-						printf(RED "moving to reg\n" RESET);
 						cpu->regs[operands[0].value] = operands[1].actual_value;
 						break;
 					case OP_REGPTR:
 						cpu->mem[cpu->regs[operands[0].value]] = operands[1].actual_value;
-						printf(RED "moving to regptr\n" RESET);
 						break;
 
 					case OP_VALUEPTR:
-						printf(RED "moving to valueptr\n" RESET);
 						cpu->mem[operands[0].value] = operands[1].actual_value;
-						break;
-					default:
-						printf(RED "da hell??\n" RESET);
 						break;
 				}
 				break;
@@ -230,7 +246,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				break;
 
 			BINARY_OP(ADD, res = a + b);
-			BINARY_OP(SUB, res = b - a; cpu->regs[FLAGS] |= (res == 0));
+			BINARY_OP(SUB, res = b - a; set_flags(cpu, res);)
 			BINARY_OP(MUL, res = a * b);
 			BINARY_OP(DIV, res = b / a);
 
@@ -249,15 +265,18 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				cpu_dump(cpu);
 				break;
 			case CMP:
-				stack_pop(&cpu->call_stack, &a);
-				stack_pop(&cpu->call_stack, &b);
+				if(operand_cnt == 0)
+				{
+					stack_pop(&cpu->data_stack, &a);
+					stack_pop(&cpu->data_stack, &b);
+				}
+				else
+				{
+					a = operands[1].actual_value;
+					b = operands[0].actual_value;
+				}
 
-				if(a == b)	cpu->regs[FLAGS] |= 1;		// ZF (0)
-				else		cpu->regs[FLAGS] &= ~1;
-
-				if(a < b)	cpu->regs[FLAGS] |= (1 << 1);	// CF (1)
-				else		cpu->regs[FLAGS] &= ~(1 << 1);
-
+				set_flags(cpu, b - a);
 				break;
 			case DRAW:
 				if(fb->addr == 0)
@@ -265,10 +284,19 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, "framebuffer is not initialized!\n");
 					return -1;
 				}
+				
+				uint32_t* dataptr = (uint32_t*)(cpu->mem + operands[0].actual_value);
 
-				// memcpy
+				for(int row = 0; row < FB_HEIGHT; row++)
+				{
+					for(int column = 0; column < FB_WIDTH; column++)
+					{	
+						fb->addr[row * fb->actual_width + column] = 0xAAFFAA00;
+						// fb->addr[row * fb->actual_width + column]= dataptr + (row * FB_WIDTH + column), sizeof(uint32_t));
+					}
+				}
 
-				// copy to framebuffer
+				printf(GREEN UNDERLINE "copied to framebuffer!\n" RESET);
 				break;
 			case HLT:
 				printf(GREEN "halting!\n" RESET);
@@ -278,22 +306,22 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				cpu->regs[IP] = operands[0].value;
 				break;
 			case JZ:
-				if(cpu->regs[FLAGS] & 1) cpu->regs[IP] = operands[0].value;
+				if(cpu->regs[FLAGS] & 1)					cpu->regs[IP] = operands[0].value;
 				break;
 			case JNZ:
-				if(!(cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				if(!(cpu->regs[FLAGS] & 1))					cpu->regs[IP] = operands[0].value;
 				break;
 			case JG:
-				if(!(cpu->regs[FLAGS] & (1 << 1))) cpu->regs[IP] = operands[0].value;
+				if(!(cpu->regs[FLAGS] & (1 << 1)))				cpu->regs[IP] = operands[0].value;
 				break;
 			case JGE:
-				if(!(cpu->regs[FLAGS] & (1 << 1)) || (cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				if(!(cpu->regs[FLAGS] & (1 << 1)) || (cpu->regs[FLAGS] & 1))	cpu->regs[IP] = operands[0].value;
 				break;
 			case JL:
-				if(cpu->regs[FLAGS] & (1 << 1)) cpu->regs[IP] = operands[0].value;
+				if(cpu->regs[FLAGS] & (1 << 1))					cpu->regs[IP] = operands[0].value;
 				break;
 			case JLE:
-				if(cpu->regs[FLAGS] & (1 << 1) || (cpu->regs[FLAGS] & 1)) cpu->regs[IP] = operands[0].value;
+				if(cpu->regs[FLAGS] & (1 << 1) || (cpu->regs[FLAGS] & 1))	cpu->regs[IP] = operands[0].value;
 				break;
 
 			case OUT:
@@ -308,7 +336,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 						break;
 				}
 				break;
-			case INPUT:
+			case IN:
 				printf(BLUE "input: ");
 				scanf("%d", &a);
 				printf(RESET);
@@ -322,7 +350,6 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 						printf(GREEN "%d" RESET, a);
 						break;
 					case 1:
-						// printf("printing string at %d\n", operands[0].value);
 						printf(GREEN "%s" RESET, cpu->mem + operands[0].actual_value);
 						break;
 				}
@@ -334,6 +361,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, RED "Unable to load IDT!\n" RESET);
 					return -1;
 				}
+
 				printf(BLUE "loaded interrupt descriptor table at %d: sz: %d\n" RESET, cpu->regs[IDTR], cpu->idt.iv_cnt);
 				break;
 			case LGDT:
@@ -357,18 +385,9 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				fprintf(stderr, RED "Encountered INVALID instruction!: %d (%x) \n" RESET, inst, inst);
 				return -1;
 		}
-		
-		// stack_print(&cpu->data_stack, "amogus", 1, "sus()");
-
-
 	}
-
-	#undef BINARY_OP
 	return 0;
 }
-
-
-const int RAM_OVERALLOCATION = 100000;
 
 int main(int argc, char** argv)
 {
@@ -389,9 +408,9 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	cpu.mem = realloc(cpu.mem, sz + RAM_OVERALLOCATION);
+	cpu.mem = realloc(cpu.mem, sz + 0xFFFFFF);
 	
-	print_buf(cpu.mem, sz);
+	// print_buf(cpu.mem, sz);
 
 	framebuf_t fb = { 0 };
 	initialize_framebuffer(&fb);

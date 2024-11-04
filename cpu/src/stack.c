@@ -8,7 +8,6 @@
 #include <time.h>
 
 #include "stack.h"
-#include "crc.h"
 #include "io.h"
 
 static const size_t MIN_STACK_SIZE = 16;
@@ -136,22 +135,15 @@ inline static stack_status_t maybe_decrease_alloc(stack_t *stack)
 	return STACK_OK;
 }
 
-stack_status_t stack_print(stack_t* stack, const char* file, const int line, const char* function)
+stack_status_t stack_print(stack_t* stack)
 {
 	if(!stack) return STACK_ERR_ARGNULL;
 
 #ifndef STACK_NDEBUG
 
-	printf( "stack_t %s" BLUE " [%p]. " RESET 
-		"Instantiated at " GREEN UNDERLINE "%s:%d" RESET 
-		", printing from: " CYAN UNDERLINE "%s:%d (%s)\n" RESET,
-		stack->instantiated_with_name, stack, stack->instantiated_at_file, stack->instantiated_at_line,
-		file, line, function);
-
 	size_t cap = stack->allocated_size / stack->elem_size;
 
 	printf("\tcnt \t\t= " YELLOW "%lu\n" RESET, stack->cur_index);
-	printf("\tcapacity \t= " YELLOW "%lu\n" RESET, cap);
 
 #ifdef STACK_CRC
 	if(check_crc(stack))
@@ -159,19 +151,25 @@ stack_status_t stack_print(stack_t* stack, const char* file, const int line, con
 	else
 		printf("\tCRC\t\t=" GREEN " 0x%lx\n" RESET, stack->crc);
 #endif
-	printf("\tdata" BLUE " [%p]\n" RESET, get_buf_ptr(stack));
 
 #ifdef STACK_ENABLE_CANARIES
 	printf(BLUE "\tbuf canaries: %lx %lx\n" RESET, *(canary_t*)stack->buf, *(canary_t*)((char*)stack->buf + stack->allocated_size + sizeof(canary_t)));
 #endif
 
-	for(size_t i = 0; i < cap; i++)
+	// for(size_t i = 0; i < cap; i++)
+	for(size_t i = 0; i < stack->cur_index; i++)
 	{
-		if(i < stack->cur_index)
-			printf(RED "\t\t*\t[%lu]\t" YELLOW "= %d\n" RESET, i, ((int*)get_buf_ptr(stack))[i]);
-		else
-			printf(GREEN "\t\t\t[%lu]\t" YELLOW "= %d\n" RESET, i, ((int*)get_buf_ptr(stack))[i]);
+		// if(i < stack->cur_index)
+		printf(RED "\t*[%lu] " RESET, i);
+		// else
+			// printf(GREEN "\t[%lu] " RESET, i);
 	}
+	printf("\n");
+
+	for(size_t i = 0; i < stack->cur_index; i++)
+		printf(YELLOW "\t0x%X " RESET, ((int*)get_buf_ptr(stack))[i]);
+
+	printf("\n");
 #endif
 	return STACK_OK;
 }

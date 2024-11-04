@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define STACK_ENABLE_CANARIES
-#define STACK_CRC
+// #define STACK_ENABLE_CANARIES
+// #define STACK_CRC
 
 
 #ifdef STACK_ENABLE_CANARIES
@@ -70,7 +70,7 @@ stack_status_t	stack_dtor(stack_t* s);
 stack_status_t	stack_push(stack_t* s, const void* data);
 stack_status_t	stack_pop(stack_t* s, void* resulting_data);
 stack_status_t	stack_print_err(stack_status_t status);
-stack_status_t	stack_print(stack_t* s, const char* file, const int line, const char* function);
+stack_status_t	stack_print(stack_t* s);
 
 stack_status_t stack_chk(stack_t* stack);
 #define STACK_CHK_RET(s)	stack_status_t stack_chk_res = stack_chk(s);	\
