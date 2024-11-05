@@ -1,7 +1,7 @@
 start:
-	mov [num], 10
-	mov dx, [num]
-	dump
+	fin
+	sqrt
+	fout
 	hlt
 
 num:

@@ -142,22 +142,25 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			{
 				case OP_VALUE:
 					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
-					operands[i].actual_value = operands[i].value;
+					memcpy(&operands[i].actual_value, &operands[i].value, sizeof(reg_t));
 					break;
 
 				case OP_VALUEPTR:
 					memcpy(&operands[i].value, cpu->mem + cpu->regs[IP], sizeof(reg_t));
-					operands[i].actual_value = cpu->mem[operands[i].value];
+					// operands[i].actual_value = cpu->mem[operands[i].value];
+					memcpy(&operands[i].actual_value, &cpu->mem[operands[i].value], sizeof(reg_t));
 					break;
 
 				case OP_REG:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
-					operands[i].actual_value = cpu->regs[operands[i].value];
+					// operands[i].actual_value = cpu->regs[operands[i].value];
+					memcpy(&operands[i].actual_value, &cpu->regs[operands[i].value], sizeof(reg_t));
 					break;
 
 				case OP_REGPTR:
 					operands[i].value = ((reg_name_t*)cpu->mem)[cpu->regs[IP]];
-					operands[i].actual_value = cpu->mem[cpu->regs[operands[i].value]];
+					// operands[i].actual_value = cpu->mem[cpu->regs[operands[i].value]];
+					memcpy(&operands[i].actual_value, &cpu->mem[cpu->regs[operands[i].value]], sizeof(reg_t));
 					break;
 
 				default:
@@ -190,7 +193,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, "mov should have 2 operands!\n");
 					return -1;
 				}
-				printf(RED "val: %d\n" RESET, operands[1].actual_value);
+				// printf(RED "val: %d\n" RESET, operands[1].actual_value);
 				switch(operands[0].type)
 				{
 					case OP_VALUE:
@@ -263,7 +266,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				usleep(50000);	// too fast
 				break;
 			case HLT:
-				printf(GREEN "halting!\n" RESET);
+				// printf(GREEN "halting!\n" RESET);
 				return 0;
 			case JMP:
 				cpu->regs[IP] = operands[0].value;
@@ -303,7 +306,16 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				printf(BLUE "input: ");
 				scanf("%d", &a);
 				printf(RESET);
-				stack_push(&cpu->data_stack, &a);
+
+				switch(operand_cnt)
+				{
+					case 0:
+						stack_push(&cpu->data_stack, &a);
+						break;
+					case 1:
+						cpu->regs[operands[0].value] = a;
+						break;
+				}
 				break;
 			case PRINT:
 				switch(operand_cnt)
@@ -389,10 +401,32 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				printf(BLUE "input: ");
 				scanf("%f", &f1);
 				printf(RESET);
-				stack_push(&cpu->data_stack, &f1);
+
+				switch(operand_cnt)
+				{
+					case 0:
+						stack_push(&cpu->data_stack, &f1);
+						break;
+					case 1:
+						memcpy(&cpu->regs[operands[0].value], &f1, sizeof(float));
+						// cpu->regs[operands[0].value] = f1;
+						break;
+				}
+				break;
+				// stack_push(&cpu->data_stack, &f1);
 				break;
 			case FOUT:
-				stack_pop(&cpu->data_stack, &f1);
+				switch(operand_cnt)
+				{
+					case 0:
+						stack_pop(&cpu->data_stack, &f1);
+						break;
+					case 1:
+						memcpy(&f1, &cpu->regs[operands[0].value],sizeof(float));
+						// cpu->regs[operands[0].value] = f1;
+						break;
+				}
+				// stack_pop(&cpu->data_stack, &f1);
 				printf(GREEN "%f " RESET, f1);
 				break;
 

@@ -17,7 +17,7 @@
 #define FB_WIDTH 480
 #define FB_HEIGHT 360
 
-static const char* FB_DEV = "/dev/fb1";
+static const char* FB_DEV = "/dev/fb0";
 static const size_t FB_SIZE = FB_WIDTH * FB_HEIGHT * sizeof(uint32_t);
 
 typedef struct framebuf 
