@@ -70,8 +70,13 @@ typedef enum INSTRUCTIONS : uint8_t
 	FSUB	= 37,
 	FMUL	= 38,
 	FDIV	= 39,
+	FCMP	= 40,
+	FIN	= 41,
+	FOUT	= 42,
 	INST_INVALID	= 0
 } instruction_t;
+
+static const float EPS = 0.001;
 
 typedef enum REGISTERS : uint8_t
 {

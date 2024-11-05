@@ -30,5 +30,6 @@ typedef struct framebuf
 } framebuf_t;
 
 void print_buf(uint8_t* buf, size_t sz);
-int initialize_framebuffer(framebuf_t* fb);
-void destroy_framebuffer(framebuf_t* fb);
+int framebuffer_initialize(framebuf_t* fb);
+void framebuffer_destroy(framebuf_t* fb);
+void framebuffer_draw(framebuf_t* fb, uint8_t* dataptr);

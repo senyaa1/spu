@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <math.h>
 
 #include "arch.h"
 #include "fs.h"
@@ -8,13 +9,30 @@
 #include "cpu.h"
 #include "io.h"
 
+
 #define BINARY_OP(INST, OP)			\
-       case INST:				\
-       stack_pop(&cpu->data_stack, &a);		\
-       stack_pop(&cpu->data_stack, &b);		\
-       OP;					\
-       stack_push(&cpu->data_stack, &res);	\
-       break;					\
+case INST:					\
+	stack_pop(&cpu->data_stack, &a);	\
+	stack_pop(&cpu->data_stack, &b);	\
+	OP;					\
+	stack_push(&cpu->data_stack, &res);	\
+break;						\
+
+#define FLOAT_BINARY_OP(INST, OP)		\
+case INST:					\
+	stack_pop(&cpu->data_stack, &f1);	\
+	stack_pop(&cpu->data_stack, &f2);	\
+	OP;					\
+	stack_push(&cpu->data_stack, &fres);	\
+break;						\
+
+#define FLOAT_UNARY_OP(INST, OP)		\
+case INST:					\
+	stack_pop(&cpu->data_stack, &f1);	\
+	OP;					\
+	stack_push(&cpu->data_stack, &fres);	\
+break;						\
+
 
 
 static int load_idt(cpu_t* cpu)
@@ -87,6 +105,15 @@ static void set_flags(cpu_t* cpu, reg_t res)
 	else		cpu->regs[FLAGS] &= ~SF;
 }
 
+static void set_flags_float(cpu_t* cpu, float res)
+{
+	if(fabs(res) < EPS)	cpu->regs[FLAGS] |= ZF;
+	else			cpu->regs[FLAGS] &= ~ZF;
+
+	if(res < 0)		cpu->regs[FLAGS] |= SF;
+	else			cpu->regs[FLAGS] &= ~SF;
+}
+
 int execute(cpu_t* cpu, framebuf_t* fb)
 {
 	cpu->priv = 0;	// start in ring 0
@@ -145,8 +172,10 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			cpu->regs[IP] += operands[i].length;
 
 		}
+
 		
 		reg_t a = 0, b = 0, res = 0;
+		float f1 = 0, f2 = 0, fres = 0;
 		switch(inst)
 		{
 			case PUSH:
@@ -194,7 +223,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			BINARY_OP(DIV, res = b / a);
 
 			BINARY_OP(AND, res = a & b);
-			BINARY_OP(OR, res = a | b; );
+			BINARY_OP(OR, res = a | b);
 			BINARY_OP(XOR, res = a ^ b);
 
 			case CALL:
@@ -227,42 +256,15 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, "framebuffer is not initialized!\n");
 					return -1;
 				}
-				
+
 				uint8_t* dataptr = (uint8_t*)(cpu->mem + operands[0].actual_value);
-
-				size_t y_offset = (fb->vinfo.yres - FB_HEIGHT) / 2;
-				size_t x_offset = (fb->vinfo.xres - FB_WIDTH) / 2;
-				for (size_t y = 0; y < FB_HEIGHT; y++)
-				{
-					for (size_t x = 0; x < FB_WIDTH; x++) 
-					{
-						size_t location = (x + fb->vinfo.xoffset + x_offset) * (fb->vinfo.bits_per_pixel/8) + (y + fb->vinfo.yoffset + y_offset) * fb->finfo.line_length;
-
-						int r = dataptr[y * FB_WIDTH + x];
-						int g = dataptr[y * FB_WIDTH + x];
-						int b = dataptr[y * FB_WIDTH + x];
-
-						if (fb->vinfo.bits_per_pixel == 32) 
-						{
-							*(fb->addr + location) = b;
-							*(fb->addr + location + 1) = g;
-							*(fb->addr + location + 2) = r;
-							*(fb->addr + location + 3) = 0;
-						} 
-						else  
-						{ 
-							*((unsigned short int*)(fb->addr + location)) = (r << 11 | g << 5 | b);
-						}
-
-					}
-				}
+				framebuffer_draw(fb, dataptr);
 
 				usleep(50000);	// too fast
 				break;
 			case HLT:
 				printf(GREEN "halting!\n" RESET);
 				return 0;
-
 			case JMP:
 				cpu->regs[IP] = operands[0].value;
 				break;
@@ -368,16 +370,32 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				cpu->regs[IP] = cpu->idt.interrupt_vectors[operands[0].actual_value - 1];
 				cpu->priv = 0;
 				break;
-			case SQRT:
+
+			case FCMP:
+				stack_pop(&cpu->data_stack, &f1);
+				stack_pop(&cpu->data_stack, &f2);
+				set_flags_float(cpu, f2 - f1);
 				break;
-			case FADD:
+
+			FLOAT_BINARY_OP(FADD,	fres = f1 + f2);
+			FLOAT_BINARY_OP(FSUB,	fres = f2 - f1; set_flags_float(cpu, fres))
+			FLOAT_BINARY_OP(FMUL,	fres = f1 * f2);
+			FLOAT_BINARY_OP(FDIV,	fres = f2 / f1);
+			FLOAT_UNARY_OP(SQRT,	fres = sqrtf(f1))
+			FLOAT_UNARY_OP(SIN,	fres = sinf(f1))
+			FLOAT_UNARY_OP(COS,	fres = cosf(f1))
+
+			case FIN:
+				printf(BLUE "input: ");
+				scanf("%f", &f1);
+				printf(RESET);
+				stack_push(&cpu->data_stack, &f1);
 				break;
-			case FSUB:
+			case FOUT:
+				stack_pop(&cpu->data_stack, &f1);
+				printf(GREEN "%f " RESET, f1);
 				break;
-			case FMUL:
-				break;
-			case FDIV:
-				break;
+
 			default:
 				fprintf(stderr, RED "Encountered INVALID instruction!: %d (%x) \n" RESET, inst, inst);
 				return -1;

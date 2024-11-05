@@ -41,22 +41,28 @@ size_t strim(char** s, size_t line_len)
 
 int read_value(char* valuestr, size_t n, uint64_t* val)
 {
+	int res = 0;
 	char* terminated_str = (char*)calloc(n + 1, sizeof(char));
 	memcpy(terminated_str, valuestr, n);
 
 	char *end = 0;
 	errno = 0;
-	*val = strtoll(terminated_str, &end, 0);
+
+	// if (strchr(terminated_str, '.') != 0 && terminated_str[n - 1] == 'f')		// parse as float
+	if (strchr(terminated_str, '.') != 0)
+		*val = strtof(terminated_str, &end);
+	else
+		*val = strtoll(terminated_str, &end, 0);
+
 	bool range_error = errno == ERANGE;
 
 	if(range_error || (end - terminated_str) != n)
-	{
-		free(terminated_str);
-		return 0;
-	}
+		goto exit;
 
+	res = 1;
+exit:
 	free(terminated_str);
-	return 1;
+	return res;
 }
 
 operand_t parse_operand(char* operand_ptr, size_t len)

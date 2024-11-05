@@ -20,7 +20,7 @@ int main(int argc, char** argv)
 	STACK_INIT(&cpu.call_stack, sizeof(reg_t), 16);
 
 	size_t sz = read_file(argv[1], (char**)&cpu.mem); 
-	if(sz < 0)
+	if(sz <= 0)
 	{
 		fprintf(stderr,"unable to read the binary!\n");
 		return -1;
@@ -31,11 +31,11 @@ int main(int argc, char** argv)
 	// print_buf(cpu.mem, sz);
 
 	framebuf_t fb = { 0 };
-	initialize_framebuffer(&fb);
+	framebuffer_initialize(&fb);
 
 	int retcode = execute(&cpu, &fb);
 
-	destroy_framebuffer(&fb);
+	framebuffer_destroy(&fb);
 	free(cpu.mem);
 	free(cpu.idt.interrupt_vectors);
 	stack_dtor(&cpu.call_stack);

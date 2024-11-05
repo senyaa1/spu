@@ -102,6 +102,18 @@ static size_t assemble_instruction(const char* line, size_t line_len, uint8_t* b
 	INSTCMP(IRET)
 	INSTCMP(CMP)
 
+	INSTCMP(SIN)
+	INSTCMP(COS)
+	INSTCMP(SQRT)
+	INSTCMP(FADD)
+	INSTCMP(FSUB)
+	INSTCMP(FMUL)
+	INSTCMP(FDIV)
+	INSTCMP(FCMP)
+	INSTCMP(FIN)
+	INSTCMP(FOUT)
+
+
 	#undef INSTCMP
 
 	if (!inst && !expr)

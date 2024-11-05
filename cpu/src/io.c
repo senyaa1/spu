@@ -20,7 +20,7 @@ void print_buf(uint8_t* buf, size_t sz)
 }
 
 
-int initialize_framebuffer(framebuf_t* fb)
+int framebuffer_initialize(framebuf_t* fb)
 {
 	int fbfd = open(FB_DEV, O_RDWR);
 
@@ -38,9 +38,39 @@ int initialize_framebuffer(framebuf_t* fb)
 	return 0;
 }
 
-void destroy_framebuffer(framebuf_t* fb)
+void framebuffer_destroy(framebuf_t* fb)
 {
 	if(fb->addr == 0)  return;
 	munmap(fb->addr, FB_SIZE);
 	close(fb->fd);
+}
+
+void framebuffer_draw(framebuf_t* fb, uint8_t* dataptr)
+{
+	size_t y_offset = (fb->vinfo.yres - FB_HEIGHT) / 2;
+	size_t x_offset = (fb->vinfo.xres - FB_WIDTH) / 2;
+	for (size_t y = 0; y < FB_HEIGHT; y++)
+	{
+		for (size_t x = 0; x < FB_WIDTH; x++) 
+		{
+			size_t location = (x + fb->vinfo.xoffset + x_offset) * (fb->vinfo.bits_per_pixel/8) + (y + fb->vinfo.yoffset + y_offset) * fb->finfo.line_length;
+
+			int r = dataptr[y * FB_WIDTH + x];
+			int g = dataptr[y * FB_WIDTH + x];
+			int b = dataptr[y * FB_WIDTH + x];
+
+			if (fb->vinfo.bits_per_pixel == 32) 
+			{
+				*(fb->addr + location) = b;
+				*(fb->addr + location + 1) = g;
+				*(fb->addr + location + 2) = r;
+				*(fb->addr + location + 3) = 0;
+			} 
+			else  
+			{ 
+				*((unsigned short int*)(fb->addr + location)) = (r << 11 | g << 5 | b);
+			}
+
+		}
+	}
 }
