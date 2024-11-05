@@ -264,7 +264,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 				uint8_t* dataptr = (uint8_t*)(cpu->mem + operands[0].actual_value);
 				framebuffer_draw(fb, dataptr);
 
-				usleep(50000);	// too fast
+				usleep(40000);	// too fast
 				break;
 			case HLT:
 				// printf(GREEN "halting!\n" RESET);
@@ -369,8 +369,18 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 					fprintf(stderr, RED "No privs to IRET!\n" RESET);
 					return -1;
 				}
-				stack_pop(&cpu->call_stack, &cpu->regs[IP]);
 				cpu->priv = 1;
+
+				switch(operand_cnt)
+				{
+					case 1:
+						cpu->regs[IP] = operands[0].actual_value;
+						break;
+					default:
+						stack_pop(&cpu->call_stack, &cpu->regs[IP]);
+						break;
+				}
+
 				break;
 			case INT:
 				stack_push(&cpu->call_stack, &cpu->regs[IP]);

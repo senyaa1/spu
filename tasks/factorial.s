@@ -1,5 +1,6 @@
 start:
 	in ax
+	pop ax
 
 	call fact
 

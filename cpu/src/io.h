@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <signal.h>
 #include <linux/fb.h>
 
 #define RED   "\x1B[31m"
@@ -29,7 +30,10 @@ typedef struct framebuf
 
 } framebuf_t;
 
+static const int subscribed_signals[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
 void print_buf(uint8_t* buf, size_t sz);
 int framebuffer_initialize(framebuf_t* fb);
 void framebuffer_destroy(framebuf_t* fb);
 void framebuffer_draw(framebuf_t* fb, uint8_t* dataptr);
+void setup_signals(void(*signal_handler)(int sig, siginfo_t* si, void* arg));

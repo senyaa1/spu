@@ -1,3 +1,5 @@
+#define __USE_GNU
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,9 +9,12 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <signal.h>
+#include <ucontext.h>
 
 #include "io.h"
 
+static struct sigaction siga;
 
 void print_buf(uint8_t* buf, size_t sz)
 {
@@ -71,6 +76,21 @@ void framebuffer_draw(framebuf_t* fb, uint8_t* dataptr)
 				*((unsigned short int*)(fb->addr + location)) = (r << 11 | g << 5 | b);
 			}
 
+		}
+	}
+}
+
+void setup_signals(void(*signal_handler)(int sig, siginfo_t* si, void* arg))
+{
+	siga.sa_sigaction = signal_handler;
+	siga.sa_flags = SA_SIGINFO;
+
+	for(size_t i = 0; i < sizeof(subscribed_signals) / sizeof(int); i++)
+	{
+		if(sigaction(subscribed_signals[i], &siga, NULL))
+		{
+			perror("sigaction");
+			exit(EXIT_FAILURE);
 		}
 	}
 }
