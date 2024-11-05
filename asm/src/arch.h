@@ -73,6 +73,7 @@ typedef enum INSTRUCTIONS : uint8_t
 	FCMP	= 40,
 	FIN	= 41,
 	FOUT	= 42,
+	MOD	= 43,
 	INST_INVALID	= 0
 } instruction_t;
 

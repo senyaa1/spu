@@ -112,6 +112,7 @@ static size_t assemble_instruction(const char* line, size_t line_len, uint8_t* b
 	INSTCMP(FCMP)
 	INSTCMP(FIN)
 	INSTCMP(FOUT)
+	INSTCMP(MOD)
 
 
 	#undef INSTCMP

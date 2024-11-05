@@ -26,7 +26,7 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	cpu.mem = realloc(cpu.mem, sz + 0xFFFFFF);
+	cpu.mem = realloc(cpu.mem, sz + 0xFF + FB_SIZE);
 	
 	// print_buf(cpu.mem, sz);
 

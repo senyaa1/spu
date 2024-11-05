@@ -228,6 +228,7 @@ int execute(cpu_t* cpu, framebuf_t* fb)
 			BINARY_OP(AND, res = a & b);
 			BINARY_OP(OR, res = a | b);
 			BINARY_OP(XOR, res = a ^ b);
+			BINARY_OP(MOD, res = b % a);
 
 			case CALL:
 				stack_push(&cpu->call_stack, &cpu->regs[IP]);
